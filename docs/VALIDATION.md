@@ -66,3 +66,7 @@ These exclude Canvas/React/network work. Observed browser HUD frame-work samples
 ## Not verified
 
 Original database endpoints, external database operation, hosted deployment, GitHub Actions execution on GitHub, real synchronized multiplayer, cross-platform lockstep, real mobile hardware, large crowd scaling, long-duration operational resilience, asset/source redistribution licenses, and persistent money/progression. GitHub push verification is reported separately in the handoff; CI configuration alone is not a successful remote run.
+
+## Homepage visual revision
+
+The user rejected the first schematic homepage. The revised homepage restores Source A's condensed title/callsign panel and Source B's illustrated hero/location/role flow, with replacement artwork documented in ART_DIRECTION.md. After revision, formatting, ESLint, TypeScript and the production build passed. Playwright confirmed all seven images load, no horizontal overflow at 1440px desktop or 390px touch width, callsign gating, pressed selection states, correct Concord/police deployment, working formation orders, spectator deployment, retained callsign on exit, and military deployment in a DPR2 touch context. The completed browser run reported zero page errors. Screenshots of both layouts were inspected locally. Simulation source and tests were unchanged by this visual revision.

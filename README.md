@@ -67,9 +67,10 @@ A single application avoids monorepo overhead. When a real room server exists, t
 - [Deployment options and researched limits](docs/DEPLOYMENT_OPTIONS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Executed validation](docs/VALIDATION.md)
+- [Homepage art direction and replacement artwork](docs/ART_DIRECTION.md)
 
 ## Limits and ownership
 
 This is an integration baseline, not a production multiplayer release. Bots use bounded navigation and explainable rules; large crowd scaling, tactics, balance, audio, animated sprite assets, and authoritative services remain future work. Canvas performance must be measured on target hardware before selecting WebGL. Tests prove reproducibility for the covered seed/input/runtime combinations, not cross-platform lockstep compatibility.
 
-The supplied prototypes contained no LICENSE or asset provenance records. No absent `/img/` promotional assets or third-party fonts are downloaded or required. Procedural source code is reused under the user's integration instruction; redistribution rights still need confirmation before adding an open-source license or publishing an asset pack. Dependency license metadata is recorded in the installed packages.
+The supplied prototypes contained no LICENSE or original image files. The homepage combines their layout and typography with seven newly generated replacement illustrations in `public/img/`; it does not claim to recover their absent artwork. Bebas Neue and Barlow are bundled locally with their SIL Open Font Licenses in `public/fonts/`. See [art direction and prompts](docs/ART_DIRECTION.md). Procedural source code is reused under the user's integration instruction; its redistribution rights still need confirmation before adding an open-source license. Dependency license metadata is recorded in the installed packages.
