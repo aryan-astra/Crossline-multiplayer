@@ -1,0 +1,1111 @@
+import type { World, Entity, MapDef, Building } from "./types";
+
+const SKINS = ["#e8b98d", "#c98e5f", "#a5673f", "#8a5232", "#f0c9a0"];
+const PROTEST_CLOTH = [
+  "#c94f3d",
+  "#3d7bc9",
+  "#4d9c57",
+  "#c9a13d",
+  "#7a4dc9",
+  "#4db6c9",
+];
+const CIV_CLOTH = [
+  "#8b8f96",
+  "#a39a8b",
+  "#7d8a94",
+  "#968f7d",
+  "#8a7f96",
+  "#93968a",
+];
+
+/* ------------ ground texture (cached) ------------ */
+export function buildGround(map: MapDef): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = map.w;
+  c.height = map.h;
+  const g = c.getContext("2d")!;
+  if (map.ambience === "delhi") {
+    g.fillStyle = "#c7ae83";
+    g.fillRect(0, 0, map.w, map.h);
+    // paving tiles inside complex
+    g.fillStyle = "#cdb489";
+    g.fillRect(240, 210, 1260, 1140);
+    g.strokeStyle = "rgba(120,95,60,0.18)";
+    g.lineWidth = 1;
+    for (let x = 240; x < 1500; x += 46) {
+      g.beginPath();
+      g.moveTo(x, 210);
+      g.lineTo(x, 1350);
+      g.stroke();
+    }
+    for (let y = 210; y < 1350; y += 46) {
+      g.beginPath();
+      g.moveTo(240, y);
+      g.lineTo(1500, y);
+      g.stroke();
+    }
+    // speckle
+    for (let i = 0; i < 2600; i++) {
+      g.fillStyle = `rgba(${100 + Math.random() * 60},${80 + Math.random() * 50},40,${Math.random() * 0.08})`;
+      g.fillRect(Math.random() * map.w, Math.random() * map.h, 3, 3);
+    }
+    for (const l of map.lawns) {
+      g.fillStyle = "#7d9a52";
+      g.fillRect(l.x, l.y, l.w, l.h);
+      g.fillStyle = "rgba(60,90,35,0.25)";
+      for (let i = 0; i < (l.w * l.h) / 300; i++)
+        g.fillRect(l.x + Math.random() * l.w, l.y + Math.random() * l.h, 4, 2);
+      g.strokeStyle = "#5c7a3a";
+      g.lineWidth = 3;
+      g.strokeRect(l.x, l.y, l.w, l.h);
+    }
+  } else {
+    g.fillStyle = "#a8a49b";
+    g.fillRect(0, 0, map.w, map.h);
+    // plaza paving grid
+    g.strokeStyle = "rgba(70,68,62,0.22)";
+    for (let x = 310; x < 1900; x += 42) {
+      g.beginPath();
+      g.moveTo(x, 420);
+      g.lineTo(x, 1110);
+      g.stroke();
+    }
+    for (let y = 420; y < 1110; y += 42) {
+      g.beginPath();
+      g.moveTo(310, y);
+      g.lineTo(1900, y);
+      g.stroke();
+    }
+    // decorative plaza circles around monument
+    g.strokeStyle = "rgba(80,76,68,0.3)";
+    g.lineWidth = 4;
+    for (const r of [140, 200, 260]) {
+      g.beginPath();
+      g.arc(1025, 695, r, 0, Math.PI * 2);
+      g.stroke();
+    }
+    for (let i = 0; i < 2200; i++) {
+      g.fillStyle = `rgba(60,58,52,${Math.random() * 0.07})`;
+      g.fillRect(Math.random() * map.w, Math.random() * map.h, 3, 3);
+    }
+  }
+  // roads
+  for (const r of map.roads) {
+    g.fillStyle = map.ambience === "delhi" ? "#5b5750" : "#4a4d52";
+    g.fillRect(r.x, r.y, r.w, r.h);
+    g.strokeStyle = "rgba(255,255,255,0.35)";
+    g.lineWidth = 2;
+    g.setLineDash([18, 22]);
+    g.beginPath();
+    if (r.h > r.w) {
+      g.moveTo(r.x + r.w / 2, r.y);
+      g.lineTo(r.x + r.w / 2, r.y + r.h);
+    } else {
+      g.moveTo(r.x, r.y + r.h / 2);
+      g.lineTo(r.x + r.w, r.y + r.h / 2);
+    }
+    g.stroke();
+    g.setLineDash([]);
+  }
+  // crosswalks near spawns
+  g.fillStyle = "rgba(255,255,255,0.5)";
+  const cw =
+    map.ambience === "delhi"
+      ? { x: 100, y: 1395, w: 110, h: 60 }
+      : { x: 310, y: 715, w: 90, h: 80 };
+  for (let i = 0; i < 6; i++) {
+    if (map.ambience === "delhi") g.fillRect(cw.x + 6 + i * 18, cw.y, 10, cw.h);
+    else g.fillRect(cw.x, cw.y + 4 + i * 13, cw.w, 7);
+  }
+  // labels
+  for (const l of map.labels) {
+    g.font = `700 ${l.size ?? 14}px 'Barlow', sans-serif`;
+    g.fillStyle =
+      map.ambience === "delhi" ? "rgba(90,65,30,0.5)" : "rgba(255,255,255,0.4)";
+    g.textAlign = "center";
+    g.save();
+    if (l.text === "SANSAD MARG") {
+      g.translate(l.x, l.y);
+      g.rotate(-Math.PI / 2);
+      g.fillText(l.text, 0, 0);
+    } else g.fillText(l.text, l.x, l.y);
+    g.restore();
+  }
+  // depot pads
+  for (const key of ["protester", "police"] as const) {
+    const d = map.depots[key];
+    g.strokeStyle =
+      key === "police" ? "rgba(80,140,255,0.6)" : "rgba(255,160,60,0.6)";
+    g.lineWidth = 3;
+    g.setLineDash([8, 6]);
+    g.strokeRect(d.x - 60, d.y - 45, 120, 90);
+    g.setLineDash([]);
+    g.font = "700 11px 'Barlow', sans-serif";
+    g.fillStyle =
+      key === "police" ? "rgba(80,140,255,0.8)" : "rgba(255,160,60,0.85)";
+    g.textAlign = "center";
+    g.fillText(
+      key === "police" ? "POLICE DEPOT" : "PROTEST DEPOT",
+      d.x,
+      d.y - 54,
+    );
+  }
+  // detain zone pad
+  const dz = map.detainZone;
+  g.fillStyle = "rgba(60,90,160,0.18)";
+  g.fillRect(dz.x - 55, dz.y - 40, 110, 80);
+  g.strokeStyle = "rgba(90,130,220,0.5)";
+  g.lineWidth = 2;
+  g.strokeRect(dz.x - 55, dz.y - 40, 110, 80);
+  return c;
+}
+
+/* ------------ buildings & monuments ------------ */
+function drawBuilding(
+  g: CanvasRenderingContext2D,
+  b: Building,
+  map: MapDef,
+  time: number,
+) {
+  const paris = map.ambience === "paris";
+  if (b.kind === "wall") {
+    g.fillStyle = "#b06a45";
+    g.fillRect(b.x, b.y, b.w, b.h);
+    g.fillStyle = "rgba(0,0,0,0.15)";
+    g.fillRect(b.x, b.y + b.h - 4, b.w, 4);
+    return;
+  }
+  // drop shadow
+  g.fillStyle = "rgba(0,0,0,0.22)";
+  g.fillRect(b.x + 7, b.y + 9, b.w, b.h);
+  if (b.kind === "monument") {
+    drawMonument(g, b, time);
+    return;
+  }
+  if (b.kind === "block") {
+    g.fillStyle = b.color ?? (paris ? "#ded4c2" : "#d8cfc0");
+    g.fillRect(b.x, b.y, b.w, b.h);
+    if (paris) {
+      // mansard roof with dormers
+      g.fillStyle = b.roof ?? "#6d7480";
+      g.fillRect(b.x + 12, b.y + 12, b.w - 24, b.h - 24);
+      g.strokeStyle = "rgba(255,255,255,0.12)";
+      g.lineWidth = 1;
+      for (let y = b.y + 24; y < b.y + b.h - 12; y += 16) {
+        g.beginPath();
+        g.moveTo(b.x + 12, y);
+        g.lineTo(b.x + b.w - 12, y);
+        g.stroke();
+      }
+      g.fillStyle = "#e8e2d2";
+      for (let x = b.x + 30; x < b.x + b.w - 24; x += 44) {
+        g.fillRect(x, b.y + 4, 14, 8);
+        g.fillRect(x, b.y + b.h - 12, 14, 8);
+      }
+      g.fillStyle = "#565b64";
+      g.fillRect(b.x + b.w * 0.3, b.y + b.h * 0.35, 16, 16);
+      g.fillRect(b.x + b.w * 0.65, b.y + b.h * 0.6, 16, 16);
+    } else {
+      g.fillStyle = b.roof ?? "#bfb4a1";
+      g.fillRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
+      g.strokeStyle = "rgba(0,0,0,0.12)";
+      g.lineWidth = 2;
+      g.strokeRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
+      // water tanks + AC units
+      g.fillStyle = "#3a3a3a";
+      g.beginPath();
+      g.arc(b.x + b.w * 0.3, b.y + b.h * 0.3, 9, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#8f959c";
+      g.fillRect(b.x + b.w * 0.6, b.y + b.h * 0.55, 20, 14);
+      g.fillRect(b.x + b.w * 0.25, b.y + b.h * 0.7, 16, 12);
+    }
+    if (b.name) {
+      g.font = "600 11px 'Barlow', sans-serif";
+      g.fillStyle = "rgba(40,35,25,0.65)";
+      g.textAlign = "center";
+      g.fillText(b.name, b.x + b.w / 2, b.y + b.h / 2 + 4);
+    }
+    return;
+  }
+  // shop
+  g.fillStyle = b.broken ? "#6b6258" : "#e6ddca";
+  g.fillRect(b.x, b.y, b.w, b.h);
+  g.fillStyle = b.broken ? "#4a443c" : "#cfc4ae";
+  g.fillRect(b.x + 6, b.y + 6, b.w - 12, b.h - 12);
+  // storefront windows on the side facing the action
+  const faceLeft = map.ambience === "delhi";
+  const wy = b.y + 18;
+  g.fillStyle = b.broken ? "#211d18" : "#7fb2c9";
+  if (faceLeft) {
+    g.fillRect(b.x + 2, wy, 12, b.h - 36);
+  } else {
+    g.fillRect(b.x + 14, b.y + 2, b.w - 28, 12);
+  }
+  // awning stripes
+  const aw = b.awning ?? "#9c2f2f";
+  for (let i = 0; i < 5; i++) {
+    g.fillStyle = i % 2 ? "#efe8d8" : aw;
+    if (faceLeft)
+      g.fillRect(b.x - 12, wy + i * ((b.h - 36) / 5), 14, (b.h - 36) / 5);
+    else
+      g.fillRect(b.x + 14 + i * ((b.w - 28) / 5), b.y - 12, (b.w - 28) / 5, 14);
+  }
+  if (b.broken) {
+    g.strokeStyle = "rgba(200,220,235,0.6)";
+    g.lineWidth = 1;
+    for (let i = 0; i < 7; i++) {
+      const sx = faceLeft
+        ? b.x - 4 - Math.random() * 16
+        : b.x + 20 + Math.random() * (b.w - 40);
+      const sy = faceLeft
+        ? wy + Math.random() * (b.h - 36)
+        : b.y - 4 - Math.random() * 14;
+      g.beginPath();
+      g.moveTo(sx, sy);
+      g.lineTo(sx + 5, sy + 4);
+      g.stroke();
+    }
+    g.font = "700 10px 'Barlow', sans-serif";
+    g.fillStyle = "#ffb14d";
+    g.textAlign = "center";
+    g.fillText("CLOSED", b.x + b.w / 2, b.y + b.h / 2 + 14);
+  }
+  if (b.name) {
+    g.font = "700 11px 'Barlow', sans-serif";
+    g.fillStyle = b.broken ? "rgba(255,255,255,0.4)" : "rgba(50,40,25,0.85)";
+    g.textAlign = "center";
+    g.fillText(b.name, b.x + b.w / 2, b.y + b.h / 2 + 2);
+  }
+}
+
+function drawMonument(g: CanvasRenderingContext2D, b: Building, time: number) {
+  const cx = b.x + b.w / 2,
+    cy = b.y + b.h / 2;
+  const terra = "#c1613c",
+    terraD = "#9e4a2b",
+    terraL = "#d97e54";
+  switch (b.monument) {
+    case "samrat": {
+      // side quadrant arcs
+      g.fillStyle = terraD;
+      g.beginPath();
+      g.arc(b.x - 10, cy, 130, Math.PI * 0.6, Math.PI * 1.4);
+      g.lineTo(b.x - 10, cy);
+      g.fill();
+      g.beginPath();
+      g.arc(b.x + b.w + 10, cy, 130, -Math.PI * 0.4, Math.PI * 0.4);
+      g.lineTo(b.x + b.w + 10, cy);
+      g.fill();
+      g.strokeStyle = "rgba(255,235,210,0.4)";
+      g.lineWidth = 2;
+      for (let i = 1; i < 6; i++) {
+        g.beginPath();
+        g.arc(b.x - 10, cy, 130 - i * 20, Math.PI * 0.6, Math.PI * 1.4);
+        g.stroke();
+        g.beginPath();
+        g.arc(b.x + b.w + 10, cy, 130 - i * 20, -Math.PI * 0.4, Math.PI * 0.4);
+        g.stroke();
+      }
+      // great triangle (gnomon) pointing north
+      g.fillStyle = terra;
+      g.beginPath();
+      g.moveTo(cx, b.y - 30);
+      g.lineTo(b.x + b.w, b.y + b.h);
+      g.lineTo(b.x, b.y + b.h);
+      g.closePath();
+      g.fill();
+      g.fillStyle = terraL;
+      g.beginPath();
+      g.moveTo(cx, b.y - 30);
+      g.lineTo(cx + 14, b.y + b.h);
+      g.lineTo(cx - 14, b.y + b.h);
+      g.closePath();
+      g.fill();
+      // staircase
+      g.strokeStyle = "rgba(80,30,10,0.5)";
+      g.lineWidth = 1.5;
+      for (let i = 0; i < 22; i++) {
+        const t = i / 22;
+        const y = b.y - 20 + t * (b.h + 16);
+        const half = 4 + t * 12;
+        g.beginPath();
+        g.moveTo(cx - half, y);
+        g.lineTo(cx + half, y);
+        g.stroke();
+      }
+      break;
+    }
+    case "misra": {
+      g.fillStyle = terra;
+      g.fillRect(cx - 30, b.y, 60, b.h);
+      g.fillRect(b.x, cy - 30, b.w, 60);
+      g.fillStyle = terraD;
+      for (const [ox, oy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ] as const) {
+        g.beginPath();
+        g.arc(cx + ox * 55, cy + oy * 55, 26, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = "#e8d9c2";
+        g.beginPath();
+        g.arc(cx + ox * 55, cy + oy * 55, 16, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = terraD;
+      }
+      g.fillStyle = terraL;
+      g.fillRect(cx - 8, b.y + 8, 16, b.h - 16);
+      break;
+    }
+    case "jaiprakash1":
+    case "jaiprakash2": {
+      const r = b.w / 2;
+      g.fillStyle = "#d9cbb2";
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#bfae90";
+      g.beginPath();
+      g.arc(cx, cy, r - 12, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = "rgba(90,70,40,0.55)";
+      g.lineWidth = 1.5;
+      for (let i = 1; i < 5; i++) {
+        g.beginPath();
+        g.arc(cx, cy, (r - 12) * (i / 5), 0, Math.PI * 2);
+        g.stroke();
+      }
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        g.beginPath();
+        g.moveTo(cx, cy);
+        g.lineTo(cx + Math.cos(a) * (r - 12), cy + Math.sin(a) * (r - 12));
+        g.stroke();
+      }
+      // alternating marble segments
+      g.fillStyle = "rgba(245,240,228,0.75)";
+      for (let i = 0; i < 6; i++) {
+        const a =
+          (i / 6) * Math.PI * 2 + (b.monument === "jaiprakash2" ? 0.26 : 0);
+        g.beginPath();
+        g.moveTo(cx, cy);
+        g.arc(cx, cy, r - 12, a, a + 0.26);
+        g.closePath();
+        g.fill();
+      }
+      g.strokeStyle = "#8a6f45";
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(cx - r + 12, cy);
+      g.lineTo(cx + r - 12, cy);
+      g.moveTo(cx, cy - r + 12);
+      g.lineTo(cx, cy + r - 12);
+      g.stroke();
+      break;
+    }
+    case "ram1":
+    case "ram2": {
+      const r = b.w / 2;
+      g.fillStyle = terra;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#e0d2b8";
+      g.beginPath();
+      g.arc(cx, cy, r - 14, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = terraD;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + 0.2;
+        g.save();
+        g.translate(cx, cy);
+        g.rotate(a);
+        g.fillRect(14, -5, r - 28, 10);
+        g.restore();
+      }
+      g.fillStyle = terraL;
+      g.beginPath();
+      g.arc(cx, cy, 14, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#5c4326";
+      g.fillRect(cx - 2, cy - 14, 4, 14);
+      break;
+    }
+    case "republique": {
+      // stepped pedestal
+      g.fillStyle = "#9a958a";
+      g.fillRect(b.x - 24, b.y - 24, b.w + 48, b.h + 48);
+      g.fillStyle = "#b0aa9d";
+      g.fillRect(b.x - 10, b.y - 10, b.w + 20, b.h + 20);
+      g.fillStyle = "#c4beb0";
+      g.fillRect(b.x, b.y, b.w, b.h);
+      // bronze group
+      g.fillStyle = "#4e5a4a";
+      g.beginPath();
+      g.arc(cx, cy, 40, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = "#5d6b57";
+      g.beginPath();
+      g.arc(cx, cy, 28, 0, Math.PI * 2);
+      g.fill();
+      // Marianne silhouette rising
+      g.fillStyle = "#3f4a3c";
+      g.beginPath();
+      g.moveTo(cx, cy - 58);
+      g.lineTo(cx + 10, cy - 20);
+      g.lineTo(cx + 16, cy + 10);
+      g.lineTo(cx - 16, cy + 10);
+      g.lineTo(cx - 10, cy - 20);
+      g.closePath();
+      g.fill();
+      g.beginPath();
+      g.arc(cx, cy - 62, 7, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = "#3f4a3c";
+      g.lineWidth = 4;
+      g.beginPath();
+      g.moveTo(cx + 6, cy - 44);
+      g.lineTo(cx + 26, cy - 66);
+      g.stroke();
+      // torch glint
+      const gl = 0.5 + Math.sin(time * 3) * 0.3;
+      g.fillStyle = `rgba(255,220,130,${gl})`;
+      g.beginPath();
+      g.arc(cx + 28, cy - 70, 5, 0, Math.PI * 2);
+      g.fill();
+      // wreaths at corners
+      g.fillStyle = "#6b7a5e";
+      for (const [ox, oy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+      ] as const) {
+        g.beginPath();
+        g.arc(
+          cx + ox * (b.w / 2 + 12),
+          cy + oy * (b.h / 2 + 12),
+          8,
+          0,
+          Math.PI * 2,
+        );
+        g.fill();
+      }
+      break;
+    }
+    default: {
+      g.fillStyle = terra;
+      g.fillRect(b.x, b.y, b.w, b.h);
+      g.fillStyle = terraL;
+      g.beginPath();
+      g.arc(cx, cy, Math.min(b.w, b.h) / 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  if (b.name) {
+    g.font = "600 11px 'Barlow', sans-serif";
+    g.fillStyle = "rgba(60,35,15,0.7)";
+    g.textAlign = "center";
+    g.fillText(b.name, cx, b.y + b.h + 18);
+  }
+}
+
+/* ------------ entities ------------ */
+function drawPerson(
+  g: CanvasRenderingContext2D,
+  w: World,
+  e: Entity,
+  time: number,
+) {
+  const bob = Math.sin(time * 8 + e.brain.seed) * 1.2;
+  g.save();
+  g.translate(e.x, e.y);
+  // shadow
+  g.fillStyle = "rgba(0,0,0,0.25)";
+  g.beginPath();
+  g.ellipse(2, 4, 9, 5, 0, 0, Math.PI * 2);
+  g.fill();
+  if (e.state === "down") {
+    g.rotate(e.dir + Math.PI / 2);
+    g.globalAlpha = 0.85;
+    g.fillStyle =
+      e.kind === "police"
+        ? "#2c4a7c"
+        : e.kind === "military"
+          ? "#4a5238"
+          : "#8a6f5c";
+    g.beginPath();
+    g.ellipse(0, 0, 13, 6, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = SKINS[e.skin];
+    g.beginPath();
+    g.arc(12, 0, 5, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+    return;
+  }
+  const detained = e.state === "detained";
+  g.rotate(e.dir + Math.PI / 2);
+  g.translate(0, bob * 0.4);
+  const body =
+    e.kind === "police"
+      ? "#2c4f8f"
+      : e.kind === "military"
+        ? "#4f5a38"
+        : e.kind === "civilian"
+          ? CIV_CLOTH[e.cloth]
+          : PROTEST_CLOTH[e.cloth];
+  // shield (front)
+  if (e.shield) {
+    g.fillStyle =
+      e.kind === "police" ? "rgba(160,200,240,0.55)" : "rgba(180,150,90,0.8)";
+    g.strokeStyle = e.kind === "police" ? "#9cc3e8" : "#8a6f3a";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.roundRect(-9, -16, 18, 8, 3);
+    g.fill();
+    g.stroke();
+  }
+  // shoulders / torso
+  g.fillStyle = detained ? "#7d838c" : body;
+  g.beginPath();
+  g.roundRect(-8, -6, 16, 12, 5);
+  g.fill();
+  // arms
+  g.fillStyle = detained ? "#7d838c" : body;
+  g.beginPath();
+  g.arc(-9, -1 + bob * 0.5, 3.4, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.arc(9, -1 - bob * 0.5, 3.4, 0, Math.PI * 2);
+  g.fill();
+  // rifle for military
+  if (e.kind === "military") {
+    g.strokeStyle = "#23261c";
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(5, 2);
+    g.lineTo(7, -18);
+    g.stroke();
+  }
+  // baton for police
+  if (e.kind === "police") {
+    g.strokeStyle = "#1a1d24";
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.moveTo(9, 0);
+    g.lineTo(13, -8);
+    g.stroke();
+  }
+  // head
+  g.fillStyle = SKINS[e.skin];
+  g.beginPath();
+  g.arc(0, -2, 5.2, 0, Math.PI * 2);
+  g.fill();
+  // headgear
+  if (e.kind === "police") {
+    g.fillStyle = "#1d3868";
+    g.beginPath();
+    g.arc(0, -2.5, 5.2, Math.PI * 0.9, Math.PI * 2.1);
+    g.fill();
+    g.fillRect(-5, -4, 10, 2.4);
+  } else if (e.kind === "military") {
+    g.fillStyle = "#3a422a";
+    g.beginPath();
+    g.arc(0, -2, 5.8, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#4f5a38";
+    g.beginPath();
+    g.arc(0, -2.6, 4.4, 0, Math.PI * 2);
+    g.fill();
+  } else {
+    g.fillStyle = ["#241a12", "#0f0d0b", "#3a2a18", "#191512", "#4a3620"][
+      e.skin
+    ];
+    g.beginPath();
+    g.arc(0, -3.4, 4.6, Math.PI * 0.95, Math.PI * 2.05);
+    g.fill();
+  }
+  // sign for protesters
+  if (e.sign && e.kind === "protester" && !detained) {
+    g.save();
+    g.rotate(Math.sin(time * 3 + e.brain.seed) * 0.12);
+    g.strokeStyle = "#7a5c34";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(8, 0);
+    g.lineTo(13, -22);
+    g.stroke();
+    g.fillStyle = "#f2ead6";
+    g.strokeStyle = "#c9bda0";
+    g.lineWidth = 1;
+    g.beginPath();
+    g.roundRect(3, -34, 22, 13, 2);
+    g.fill();
+    g.stroke();
+    g.fillStyle = ["#c94f3d", "#2c4f8f", "#3a7c46"][e.cloth % 3];
+    g.fillRect(6, -31, 16, 2.4);
+    g.fillRect(6, -27, 12, 2.4);
+    g.restore();
+  }
+  g.restore();
+
+  // ---- overlays in world space ----
+  // violent indicator
+  if (e.violentT > 0) {
+    const pulse = 0.6 + Math.sin(time * 8) * 0.3;
+    g.strokeStyle = `rgba(255,70,50,${pulse})`;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(e.x, e.y, 14, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = "#ff4632";
+    g.beginPath();
+    g.moveTo(e.x, e.y - 30);
+    g.lineTo(e.x + 6, e.y - 20);
+    g.lineTo(e.x - 6, e.y - 20);
+    g.closePath();
+    g.fill();
+    g.fillStyle = "#fff";
+    g.font = "700 8px 'Barlow', sans-serif";
+    g.textAlign = "center";
+    g.fillText("!", e.x, e.y - 22);
+  }
+  if (e.warnedT > 0 && e.kind === "protester") {
+    g.strokeStyle = "rgba(255,200,60,0.8)";
+    g.lineWidth = 1.5;
+    g.setLineDash([4, 4]);
+    g.beginPath();
+    g.arc(e.x, e.y, 17, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+  }
+  // detain progress
+  if (e.detainProgress > 0 && e.state !== "detained") {
+    g.strokeStyle = "#4da3ff";
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(
+      e.x,
+      e.y,
+      12,
+      -Math.PI / 2,
+      -Math.PI / 2 + (e.detainProgress / 1.2) * Math.PI * 2,
+    );
+    g.stroke();
+  }
+  if (detained) {
+    g.font = "700 9px 'Barlow', sans-serif";
+    g.fillStyle = "#9cc3e8";
+    g.textAlign = "center";
+    g.fillText("⛓ DETAINED", e.x, e.y - 18);
+  }
+  // stun stars
+  if (e.stun > 0) {
+    g.fillStyle = "#ffd75e";
+    g.font = "10px sans-serif";
+    g.textAlign = "center";
+    g.fillText("✶ ", e.x + Math.sin(time * 10) * 4, e.y - 20);
+  }
+  // hp bar
+  if (e.hp < e.maxHp) {
+    g.fillStyle = "rgba(0,0,0,0.5)";
+    g.fillRect(e.x - 12, e.y + 12, 24, 3.4);
+    g.fillStyle = e.hp > 50 ? "#5ec96a" : e.hp > 25 ? "#e8b13d" : "#e05545";
+    g.fillRect(e.x - 12, e.y + 12, 24 * Math.max(0, e.hp / e.maxHp), 3.4);
+  }
+  // player / remote / selection rings + names
+  if (e.isPlayer) {
+    g.strokeStyle = "#ffd75e";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(e.x, e.y, 15, 0, Math.PI * 2);
+    g.stroke();
+    label(g, e.x, e.y + 26, `▼ ${e.name}`, "#ffd75e");
+  } else if (e.remote) {
+    g.strokeStyle = "#4de8c2";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(e.x, e.y, 15, 0, Math.PI * 2);
+    g.stroke();
+    label(g, e.x, e.y + 26, `◉ ${e.name}`, "#4de8c2");
+  } else if (w.selectedId === e.id) {
+    label(g, e.x, e.y + 26, e.name, "#fff");
+  }
+  if (w.selectedId === e.id) {
+    g.strokeStyle = "#fff";
+    g.lineWidth = 1.5;
+    g.setLineDash([5, 4]);
+    g.beginPath();
+    g.arc(e.x, e.y, 19, time * 2, time * 2 + Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+  }
+  // rank pips for police
+  if ((e.kind === "police" || e.kind === "military") && e.rank > 0) {
+    g.fillStyle = "#ffd75e";
+    for (let i = 0; i < e.rank; i++) {
+      g.beginPath();
+      g.arc(e.x - 6 + i * 6, e.y - 16, 1.8, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  // speech bubble
+  if (e.bubble) {
+    g.font = "600 11px 'Barlow', sans-serif";
+    const tw = g.measureText(e.bubble).width;
+    const bx = e.x - tw / 2 - 7,
+      by = e.y - 46;
+    g.fillStyle = "rgba(20,22,26,0.88)";
+    g.beginPath();
+    g.roundRect(bx, by, tw + 14, 20, 6);
+    g.fill();
+    g.beginPath();
+    g.moveTo(e.x - 4, by + 20);
+    g.lineTo(e.x + 4, by + 20);
+    g.lineTo(e.x, by + 26);
+    g.closePath();
+    g.fill();
+    g.fillStyle = "#f2ead6";
+    g.textAlign = "center";
+    g.fillText(e.bubble, e.x, by + 14);
+  }
+}
+
+function label(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  text: string,
+  color: string,
+) {
+  g.font = "700 10px 'Barlow', sans-serif";
+  g.textAlign = "center";
+  g.fillStyle = "rgba(0,0,0,0.55)";
+  const tw = g.measureText(text).width;
+  g.fillRect(x - tw / 2 - 4, y - 9, tw + 8, 13);
+  g.fillStyle = color;
+  g.fillText(text, x, y + 1);
+}
+
+function drawTruck(g: CanvasRenderingContext2D, e: Entity, time: number) {
+  g.save();
+  g.translate(e.x, e.y);
+  g.rotate(e.dir);
+  g.fillStyle = "rgba(0,0,0,0.3)";
+  g.fillRect(-26, -12 + 5, 56, 26);
+  g.fillStyle = e.truckFaction === "police" ? "#2c4f8f" : "#b3862e";
+  g.beginPath();
+  g.roundRect(-28, -13, 40, 26, 3);
+  g.fill();
+  g.fillStyle = e.truckFaction === "police" ? "#3d63a8" : "#c9a13d";
+  g.beginPath();
+  g.roundRect(12, -11, 18, 22, 4);
+  g.fill();
+  g.fillStyle = "#9fd4e8";
+  g.fillRect(24, -9, 5, 18);
+  g.fillStyle = "#1a1c20";
+  for (const [wx, wy] of [
+    [-20, -14],
+    [-20, 12],
+    [16, -13],
+    [16, 11],
+  ] as const)
+    g.fillRect(wx, wy, 9, 4);
+  g.fillStyle = "#fff";
+  g.font = "700 9px 'Barlow', sans-serif";
+  g.textAlign = "center";
+  g.save();
+  g.rotate((Math.PI / 2) * 0);
+  g.fillText(e.truckFaction === "police" ? "POLICE" : "SUPPLY", -8, 3);
+  g.restore();
+  if (e.state === "drive" && Math.sin(time * 10) > 0) {
+    g.fillStyle = e.truckFaction === "police" ? "#5d9cff" : "#ffd75e";
+    g.beginPath();
+    g.arc(14, 0, 4, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
+function drawCrate(g: CanvasRenderingContext2D, e: Entity, time: number) {
+  const glow = 0.5 + Math.sin(time * 4 + e.id) * 0.3;
+  g.fillStyle = `rgba(255,215,94,${glow * 0.25})`;
+  g.beginPath();
+  g.arc(e.x, e.y, 16, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "rgba(0,0,0,0.25)";
+  g.fillRect(e.x - 7, e.y - 4, 16, 12);
+  g.fillStyle = "#a8813f";
+  g.fillRect(e.x - 8, e.y - 8, 16, 14);
+  g.strokeStyle = "#6b5023";
+  g.lineWidth = 1.5;
+  g.strokeRect(e.x - 8, e.y - 8, 16, 14);
+  g.beginPath();
+  g.moveTo(e.x - 8, e.y - 1);
+  g.lineTo(e.x + 8, e.y - 1);
+  g.stroke();
+  g.fillStyle = e.crateFaction === "police" ? "#4da3ff" : "#ffb14d";
+  g.fillRect(e.x - 3, e.y - 5, 6, 8);
+}
+
+/* ------------ main frame ------------ */
+export function drawFrame(
+  ctx: CanvasRenderingContext2D,
+  w: World,
+  cw: number,
+  ch: number,
+  ground: HTMLCanvasElement,
+) {
+  const time = w.time;
+  const z = w.zoom;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.save();
+  ctx.translate(cw / 2, ch / 2);
+  ctx.scale(z, z);
+  ctx.translate(-w.camX, -w.camY);
+
+  ctx.drawImage(ground, 0, 0);
+
+  // trees shadows + canopies (below entities partially)
+  for (const t of w.map.trees) {
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(t.x + 6, t.y + 7, t.r, t.r * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const b of w.map.buildings) drawBuilding(ctx, b, w.map, time);
+
+  // order marker
+  if (w.order && w.order.t > 0) {
+    const o = w.order;
+    const pulse = 1 + Math.sin(time * 5) * 0.15;
+    ctx.strokeStyle = "rgba(77,163,255,0.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, 24 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#4da3ff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(o.x, o.y);
+    ctx.lineTo(o.x, o.y - 36);
+    ctx.stroke();
+    ctx.fillStyle = "#4da3ff";
+    ctx.beginPath();
+    ctx.moveTo(o.x, o.y - 36);
+    ctx.lineTo(o.x + 24, o.y - 30);
+    ctx.lineTo(o.x, o.y - 24);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = "700 10px 'Barlow', sans-serif";
+    ctx.fillStyle = "#cfe4ff";
+    ctx.textAlign = "center";
+    ctx.fillText(o.mode.toUpperCase(), o.x, o.y + 40);
+  }
+
+  // crates & entities sorted by y
+  const drawables = [...w.entities].sort((a, b) => a.y - b.y);
+  for (const e of drawables) {
+    if (e.kind === "crate") drawCrate(ctx, e, time);
+    else if (e.kind === "truck") drawTruck(ctx, e, time);
+    else drawPerson(ctx, w, e, time);
+  }
+
+  // trees canopies on top
+  for (const t of w.map.trees) {
+    ctx.fillStyle = w.map.ambience === "delhi" ? "#4f7031" : "#3f5c33";
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = w.map.ambience === "delhi" ? "#6b8f42" : "#547544";
+    ctx.beginPath();
+    ctx.arc(t.x - t.r * 0.25, t.y - t.r * 0.25, t.r * 0.65, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // projectiles
+  for (const pr of w.projectiles) {
+    const k = Math.min(1, pr.t / pr.dur);
+    if (pr.kind === "stone") {
+      const lift = Math.sin(k * Math.PI) * 34;
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(pr.x, pr.y, 3, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#6e675c";
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y - lift, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (pr.kind === "bullet") {
+      ctx.strokeStyle = "rgba(255,230,150,0.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pr.sx, pr.sy);
+      ctx.lineTo(pr.x, pr.y);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#8a949c";
+      ctx.save();
+      ctx.translate(pr.x, pr.y - Math.sin(k * Math.PI) * 26);
+      ctx.rotate(k * 9);
+      ctx.fillRect(-3, -5, 6, 10);
+      ctx.restore();
+    }
+  }
+
+  // gas clouds
+  for (const gc of w.gases) {
+    const life = 1 - gc.t / gc.dur;
+    for (let i = 0; i < 5; i++) {
+      const a = time * 0.7 + i * 1.26;
+      const ox = Math.cos(a) * gc.r * 0.3,
+        oy = Math.sin(a * 1.3) * gc.r * 0.3;
+      const grad = ctx.createRadialGradient(
+        gc.x + ox,
+        gc.y + oy,
+        4,
+        gc.x + ox,
+        gc.y + oy,
+        gc.r * 0.75,
+      );
+      grad.addColorStop(0, `rgba(190,200,170,${0.34 * life})`);
+      grad.addColorStop(1, "rgba(190,200,170,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(gc.x + ox, gc.y + oy, gc.r * 0.75, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // effects
+  for (const f of w.effects) {
+    const k = f.t / f.dur;
+    if (f.kind === "ring") {
+      ctx.strokeStyle = f.color ?? "#fff";
+      ctx.globalAlpha = 1 - k;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 8 + k * (f.r ?? 30), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (f.kind === "flash") {
+      ctx.fillStyle = `rgba(255,230,140,${1 - k})`;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, 6 + k * 10, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (f.kind === "smoke") {
+      ctx.fillStyle = `rgba(150,150,150,${0.5 * (1 - k)})`;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y - k * 10, (f.r ?? 6) + k * 12, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (f.kind === "text") {
+      ctx.font = "800 13px 'Barlow', sans-serif";
+      ctx.textAlign = "center";
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillText(f.text ?? "", f.x + 1, f.y - k * 26 + 1);
+      ctx.fillStyle = f.color ?? "#fff";
+      ctx.fillText(f.text ?? "", f.x, f.y - k * 26);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // lamps glow (paris dusk)
+  if (w.map.ambience === "paris") {
+    for (const l of w.map.lamps) {
+      const grad = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, 70);
+      grad.addColorStop(0, "rgba(255,210,130,0.30)");
+      grad.addColorStop(1, "rgba(255,210,130,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, 70, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffdf9e";
+      ctx.beginPath();
+      ctx.arc(l.x, l.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+
+  // ambience tint + vignette (screen space)
+  ctx.fillStyle =
+    w.map.ambience === "delhi"
+      ? "rgba(255,170,70,0.05)"
+      : "rgba(25,35,70,0.14)";
+  ctx.fillRect(0, 0, cw, ch);
+  const vg = ctx.createRadialGradient(
+    cw / 2,
+    ch / 2,
+    Math.min(cw, ch) * 0.42,
+    cw / 2,
+    ch / 2,
+    Math.max(cw, ch) * 0.75,
+  );
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.4)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, cw, ch);
+}
+
+/* ------------ minimap ------------ */
+export function drawMinimap(
+  ctx: CanvasRenderingContext2D,
+  w: World,
+  mw: number,
+  mh: number,
+) {
+  const sx = mw / w.map.w,
+    sy = mh / w.map.h;
+  ctx.clearRect(0, 0, mw, mh);
+  ctx.fillStyle = w.map.ambience === "delhi" ? "#8a7550" : "#6e6b64";
+  ctx.fillRect(0, 0, mw, mh);
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  for (const b of w.map.buildings)
+    ctx.fillRect(
+      b.x * sx,
+      b.y * sy,
+      Math.max(1.5, b.w * sx),
+      Math.max(1.5, b.h * sy),
+    );
+  for (const e of w.entities) {
+    if (e.kind === "crate" || e.kind === "truck") continue;
+    ctx.fillStyle = e.isPlayer
+      ? "#ffd75e"
+      : e.remote
+        ? "#4de8c2"
+        : e.state === "detained"
+          ? "#6b7686"
+          : e.kind === "protester"
+            ? e.violentT > 0
+              ? "#ff4632"
+              : "#ff9c4d"
+            : e.kind === "police"
+              ? "#4da3ff"
+              : e.kind === "military"
+                ? "#8fd45e"
+                : "#b8b8b8";
+    ctx.beginPath();
+    ctx.arc(e.x * sx, e.y * sy, e.isPlayer ? 3 : 1.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (w.order && w.order.t > 0) {
+    ctx.strokeStyle = "#4da3ff";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(w.order.x * sx, w.order.y * sy, 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // camera viewport
+  ctx.strokeStyle = "rgba(255,255,255,0.6)";
+  ctx.lineWidth = 1;
+  const vw = (window.innerWidth / w.zoom) * sx,
+    vh = (window.innerHeight / w.zoom) * sy;
+  ctx.strokeRect(w.camX * sx - vw / 2, w.camY * sy - vh / 2, vw, vh);
+}
