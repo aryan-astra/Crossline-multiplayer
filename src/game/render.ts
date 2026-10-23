@@ -20,6 +20,11 @@ const CIV_CLOTH = [
 
 /* ------------ ground texture (cached) ------------ */
 export function buildGround(map: MapDef): HTMLCanvasElement {
+  let seed = map.ambience === "delhi" ? 71 : 113;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
   const c = document.createElement("canvas");
   c.width = map.w;
   c.height = map.h;
@@ -46,15 +51,15 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
     }
     // speckle
     for (let i = 0; i < 2600; i++) {
-      g.fillStyle = `rgba(${100 + Math.random() * 60},${80 + Math.random() * 50},40,${Math.random() * 0.08})`;
-      g.fillRect(Math.random() * map.w, Math.random() * map.h, 3, 3);
+      g.fillStyle = `rgba(${100 + random() * 60},${80 + random() * 50},40,${random() * 0.08})`;
+      g.fillRect(random() * map.w, random() * map.h, 3, 3);
     }
     for (const l of map.lawns) {
       g.fillStyle = "#7d9a52";
       g.fillRect(l.x, l.y, l.w, l.h);
       g.fillStyle = "rgba(60,90,35,0.25)";
       for (let i = 0; i < (l.w * l.h) / 300; i++)
-        g.fillRect(l.x + Math.random() * l.w, l.y + Math.random() * l.h, 4, 2);
+        g.fillRect(l.x + random() * l.w, l.y + random() * l.h, 4, 2);
       g.strokeStyle = "#5c7a3a";
       g.lineWidth = 3;
       g.strokeRect(l.x, l.y, l.w, l.h);
@@ -85,8 +90,8 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
       g.stroke();
     }
     for (let i = 0; i < 2200; i++) {
-      g.fillStyle = `rgba(60,58,52,${Math.random() * 0.07})`;
-      g.fillRect(Math.random() * map.w, Math.random() * map.h, 3, 3);
+      g.fillStyle = `rgba(60,58,52,${random() * 0.07})`;
+      g.fillRect(random() * map.w, random() * map.h, 3, 3);
     }
   }
   // roads
@@ -162,6 +167,63 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
 
 /* ------------ buildings & monuments ------------ */
 function drawBuilding(
+  g: CanvasRenderingContext2D,
+  b: Building,
+  map: MapDef,
+  time: number,
+) {
+  if (b.kind === "monument") {
+    drawRoof(g, b, map, time);
+    return;
+  }
+  const height =
+    b.kind === "wall"
+      ? 7
+      : b.kind === "shop"
+        ? 22
+        : map.ambience === "paris"
+          ? 48
+          : 35;
+  g.fillStyle = "rgba(12,18,24,0.22)";
+  g.beginPath();
+  g.moveTo(b.x, b.y);
+  g.lineTo(b.x + b.w, b.y);
+  g.lineTo(b.x + b.w + height * 0.65, b.y + b.h + height * 0.35);
+  g.lineTo(b.x + height * 0.65, b.y + b.h + height * 0.35);
+  g.closePath();
+  g.fill();
+  g.fillStyle = b.color ?? (map.ambience === "paris" ? "#c9bda7" : "#b89270");
+  g.fillRect(b.x, b.y + b.h - height, b.w, height);
+  g.fillStyle = "rgba(36,31,27,0.22)";
+  g.fillRect(b.x + b.w - 6, b.y - height, 6, b.h + height);
+  if (b.kind !== "wall") {
+    for (let x = b.x + 12; x < b.x + b.w - 12; x += 28) {
+      g.fillStyle = "#34434c";
+      g.fillRect(x, b.y + b.h - height + 9, 10, Math.max(6, height - 18));
+      g.fillStyle = "#e0d5ba";
+      g.fillRect(x - 2, b.y + b.h - 5, 14, 3);
+      if (map.ambience === "paris") {
+        g.strokeStyle = "#3d4142";
+        g.lineWidth = 1;
+        g.strokeRect(x - 2, b.y + b.h - 15, 14, 7);
+      }
+    }
+  }
+  g.save();
+  g.translate(0, -height);
+  drawRoof(g, b, map, time);
+  g.restore();
+  if (b.entrance) {
+    g.fillStyle = "#202a2d";
+    g.fillRect(b.entrance.x - 9, b.entrance.y - 17, 18, 18);
+    g.strokeStyle = "#dbcf9a";
+    g.lineWidth = 2;
+    g.strokeRect(b.entrance.x - 9, b.entrance.y - 17, 18, 18);
+    label(g, b.entrance.x, b.entrance.y + 17, "ENTER", "#e4dfce");
+  }
+}
+
+function drawRoof(
   g: CanvasRenderingContext2D,
   b: Building,
   map: MapDef,
@@ -255,12 +317,14 @@ function drawBuilding(
     g.strokeStyle = "rgba(200,220,235,0.6)";
     g.lineWidth = 1;
     for (let i = 0; i < 7; i++) {
+      const fraction =
+        ((Math.imul(i + 1, 73) + b.x * 17 + b.y * 31) % 101) / 101;
       const sx = faceLeft
-        ? b.x - 4 - Math.random() * 16
-        : b.x + 20 + Math.random() * (b.w - 40);
+        ? b.x - 4 - fraction * 16
+        : b.x + 20 + fraction * (b.w - 40);
       const sy = faceLeft
-        ? wy + Math.random() * (b.h - 36)
-        : b.y - 4 - Math.random() * 14;
+        ? wy + fraction * (b.h - 36)
+        : b.y - 4 - fraction * 14;
       g.beginPath();
       g.moveTo(sx, sy);
       g.lineTo(sx + 5, sy + 4);
@@ -520,7 +584,12 @@ function drawPerson(
   e: Entity,
   time: number,
 ) {
-  const bob = Math.sin(time * 8 + e.brain.seed) * 1.2;
+  const moving =
+    e.moving ??
+    ["march", "flee", "patrol", "wander", "order"].includes(e.state);
+  const running = e.running ?? e.state === "flee";
+  const stride = moving ? Math.sin(time * (running ? 14 : 8) + e.id * 0.7) : 0;
+  const bob = stride * (running ? 1.8 : 1.2);
   g.save();
   g.translate(e.x, e.y);
   // shadow
@@ -530,7 +599,7 @@ function drawPerson(
   g.fill();
   if (e.state === "down") {
     g.rotate(e.dir + Math.PI / 2);
-    g.globalAlpha = 0.85;
+    g.globalAlpha = e.deathUntil ? 0.5 : 0.85;
     g.fillStyle =
       e.kind === "police"
         ? "#2c4a7c"
@@ -545,11 +614,22 @@ function drawPerson(
     g.arc(12, 0, 5, 0, Math.PI * 2);
     g.fill();
     g.restore();
+    label(
+      g,
+      e.x,
+      e.y - 16,
+      e.deathUntil && e.profileId ? "RESPAWNING" : "DOWN",
+      "#e0d4c5",
+    );
     return;
   }
   const detained = e.state === "detained";
   g.rotate(e.dir + Math.PI / 2);
   g.translate(0, bob * 0.4);
+  // Animation follows motion, while uniform/equipment identify role.
+  g.fillStyle = "#2b2c2e";
+  g.fillRect(-6, 5 + stride * 3, 4, 7);
+  g.fillRect(2, 5 - stride * 3, 4, 7);
   const body =
     e.kind === "police"
       ? "#2c4f8f"
@@ -577,10 +657,16 @@ function drawPerson(
   // arms
   g.fillStyle = detained ? "#7d838c" : body;
   g.beginPath();
-  g.arc(-9, -1 + bob * 0.5, 3.4, 0, Math.PI * 2);
+  g.arc(detained ? -3 : -9, detained ? 6 : -1 + bob * 0.5, 3.4, 0, Math.PI * 2);
   g.fill();
   g.beginPath();
-  g.arc(9, -1 - bob * 0.5, 3.4, 0, Math.PI * 2);
+  g.arc(
+    detained ? 3 : 9,
+    e.state === "detain" ? -9 : detained ? 6 : -1 - bob * 0.5,
+    3.4,
+    0,
+    Math.PI * 2,
+  );
   g.fill();
   // rifle for military
   if (e.kind === "military") {
@@ -622,12 +708,30 @@ function drawPerson(
     g.arc(0, -2.6, 4.4, 0, Math.PI * 2);
     g.fill();
   } else {
-    g.fillStyle = ["#241a12", "#0f0d0b", "#3a2a18", "#191512", "#4a3620"][
-      e.skin
-    ];
+    const style = e.id % 6;
+    g.fillStyle = ["#241a12", "#0f0d0b", "#3a2a18", "#72675b"][e.id % 4];
     g.beginPath();
-    g.arc(0, -3.4, 4.6, Math.PI * 0.95, Math.PI * 2.05);
+    g.arc(0, -3.4, style === 1 ? 5.6 : 4.6, Math.PI * 0.95, Math.PI * 2.05);
     g.fill();
+    if (style === 2) {
+      g.beginPath();
+      g.arc(-3, 2, 3, 0, Math.PI * 2);
+      g.fill();
+    }
+    if (style === 3 || (style === 4 && w.map.ambience === "delhi")) {
+      g.fillStyle = ["#c5b594", "#596878", "#8a644f"][Math.floor(e.id / 6) % 3];
+      g.beginPath();
+      g.ellipse(0, -3, style === 4 ? 6 : 5, 5, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = "rgba(255,255,255,0.35)";
+      g.lineWidth = 1;
+      if (style === 4) {
+        g.beginPath();
+        g.moveTo(-4, -5);
+        g.lineTo(4, -1);
+        g.stroke();
+      } else g.fillRect(-5, -7, 10, 2);
+    }
   }
   // sign for protesters
   if (e.sign && e.kind === "protester" && !detained) {
@@ -853,6 +957,114 @@ function drawCrate(g: CanvasRenderingContext2D, e: Entity, time: number) {
 }
 
 /* ------------ main frame ------------ */
+function drawInterior(
+  ctx: CanvasRenderingContext2D,
+  w: World,
+  building: Building,
+  cw: number,
+  ch: number,
+) {
+  const room = building.interior!;
+  const player = w.player!;
+  ctx.fillStyle = "#12191b";
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.save();
+  ctx.translate(cw / 2, ch / 2);
+  ctx.scale(w.zoom, w.zoom);
+  ctx.translate(-player.x, -player.y);
+  ctx.fillStyle = w.map.ambience === "delhi" ? "#b29a76" : "#a5a3a0";
+  ctx.fillRect(0, 0, room.w, room.h);
+  ctx.strokeStyle = "rgba(50,48,42,0.18)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < room.w; x += 24) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, room.h);
+    ctx.stroke();
+  }
+  for (let y = 0; y < room.h; y += 24) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(room.w, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "#514d46";
+  ctx.lineWidth = 10;
+  ctx.strokeRect(0, 0, room.w, room.h);
+  for (const obstacle of room.obstacles) {
+    ctx.fillStyle = "rgba(20,20,20,0.2)";
+    ctx.fillRect(obstacle.x + 4, obstacle.y + 4, obstacle.w, obstacle.h);
+    ctx.fillStyle = "#77634b";
+    ctx.fillRect(obstacle.x, obstacle.y - 5, obstacle.w, obstacle.h);
+    ctx.strokeStyle = "#c6ae86";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(obstacle.x, obstacle.y - 5, obstacle.w, obstacle.h);
+  }
+  for (const e of w.entities
+    .filter((e) => !e.remove && e.buildingId === building.id)
+    .sort((a, b) => a.y - b.y))
+    drawPerson(ctx, w, e, w.time);
+  label(ctx, room.w / 2, room.h - 12, "EXIT · INTERACT", "#eee1bd");
+  ctx.restore();
+  label(
+    ctx,
+    cw / 2,
+    35,
+    `${building.name ?? "PUBLIC BUILDING"} · INTERIOR`,
+    "#eee1bd",
+  );
+}
+
+function drawObjective(ctx: CanvasRenderingContext2D, w: World) {
+  const objective = w.objective;
+  if (!objective) return;
+  ctx.save();
+  ctx.translate(objective.x, objective.y);
+  ctx.strokeStyle = objective.status === "contested" ? "#cf945d" : "#c4c7b1";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.arc(0, 0, 38, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#58534b";
+  ctx.fillRect(-20, -13, 40, 28);
+  ctx.fillStyle = objective.status === "recovering" ? "#77776c" : "#a47743";
+  ctx.fillRect(-13, -21, 26, 23);
+  ctx.fillStyle = "#efe2c5";
+  ctx.fillRect(-10, -19, 9, 18);
+  ctx.fillRect(1, -19, 9, 18);
+  ctx.strokeStyle = "#8a7557";
+  ctx.lineWidth = 1;
+  for (let y = -15; y < -3; y += 4) {
+    ctx.beginPath();
+    ctx.moveTo(-8, y);
+    ctx.lineTo(-3, y);
+    ctx.moveTo(3, y);
+    ctx.lineTo(8, y);
+    ctx.stroke();
+  }
+  if (objective.progress > 0) {
+    ctx.strokeStyle = "#dfa45f";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(
+      0,
+      0,
+      42,
+      -Math.PI / 2,
+      -Math.PI / 2 +
+        Math.PI *
+          2 *
+          Math.min(1, objective.progress / objective.captureSeconds),
+    );
+    ctx.stroke();
+  }
+  label(ctx, 0, -49, "CONSTITUTION BOOK", "#eedbb4");
+  label(ctx, 0, 57, objective.status.toUpperCase(), "#ddd6c8");
+  ctx.restore();
+}
+
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
   w: World,
@@ -860,8 +1072,24 @@ export function drawFrame(
   ch: number,
   ground: HTMLCanvasElement,
 ) {
+  const room = w.player?.buildingId
+    ? w.map.buildings.find((b) => b.id === w.player!.buildingId && b.interior)
+    : undefined;
+  if (room) {
+    drawInterior(ctx, w, room, cw, ch);
+    return;
+  }
   const time = w.time;
   const z = w.zoom;
+  const left = w.camX - cw / (2 * z),
+    right = w.camX + cw / (2 * z);
+  const top = w.camY - ch / (2 * z),
+    bottom = w.camY + ch / (2 * z);
+  const visible = (x: number, y: number, radius: number) =>
+    x + radius >= left &&
+    x - radius <= right &&
+    y + radius >= top &&
+    y - radius <= bottom;
   ctx.clearRect(0, 0, cw, ch);
   ctx.save();
   ctx.translate(cw / 2, ch / 2);
@@ -872,13 +1100,12 @@ export function drawFrame(
 
   // trees shadows + canopies (below entities partially)
   for (const t of w.map.trees) {
+    if (!visible(t.x, t.y, t.r + 8)) continue;
     ctx.fillStyle = "rgba(0,0,0,0.18)";
     ctx.beginPath();
     ctx.ellipse(t.x + 6, t.y + 7, t.r, t.r * 0.8, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-
-  for (const b of w.map.buildings) drawBuilding(ctx, b, w.map, time);
 
   // order marker
   if (w.order && w.order.t > 0) {
@@ -909,15 +1136,50 @@ export function drawFrame(
   }
 
   // crates & entities sorted by y
-  const drawables = [...w.entities].sort((a, b) => a.y - b.y);
-  for (const e of drawables) {
+  const drawables: { depth: number; building?: Building; entity?: Entity }[] =
+    [];
+  for (const b of w.map.buildings) {
+    if (
+      b.x + b.w + 160 < left ||
+      b.x - 160 > right ||
+      b.y + b.h + 60 < top ||
+      b.y - 160 > bottom
+    )
+      continue;
+    drawables.push({ depth: b.y + b.h, building: b });
+  }
+  for (const e of w.entities) {
+    if (e.remove || e.buildingId || !visible(e.x, e.y, e.bubble ? 150 : 60))
+      continue;
+    drawables.push({ depth: e.y, entity: e });
+  }
+  drawables.sort((a, b) => a.depth - b.depth);
+  for (const item of drawables) {
+    if (item.building) {
+      drawBuilding(ctx, item.building, w.map, time);
+      continue;
+    }
+    const e = item.entity!;
     if (e.kind === "crate") drawCrate(ctx, e, time);
     else if (e.kind === "truck") drawTruck(ctx, e, time);
     else drawPerson(ctx, w, e, time);
   }
+  for (const resource of w.resources ?? []) {
+    if (
+      !visible(resource.x, resource.y, 40) ||
+      resource.food + resource.water <= 0
+    )
+      continue;
+    ctx.fillStyle = "#748b91";
+    ctx.fillRect(resource.x - 9, resource.y - 9, 18, 16);
+    label(ctx, resource.x, resource.y - 19, "FOOD / WATER", "#d6e6df");
+  }
+  if (w.objective && visible(w.objective.x, w.objective.y, 100))
+    drawObjective(ctx, w);
 
   // trees canopies on top
   for (const t of w.map.trees) {
+    if (!visible(t.x, t.y, t.r)) continue;
     ctx.fillStyle = w.map.ambience === "delhi" ? "#4f7031" : "#3f5c33";
     ctx.beginPath();
     ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
@@ -930,6 +1192,7 @@ export function drawFrame(
 
   // projectiles
   for (const pr of w.projectiles) {
+    if (!visible(pr.x, pr.y, 50)) continue;
     const k = Math.min(1, pr.t / pr.dur);
     if (pr.kind === "stone") {
       const lift = Math.sin(k * Math.PI) * 34;
@@ -960,6 +1223,7 @@ export function drawFrame(
 
   // gas clouds
   for (const gc of w.gases) {
+    if (!visible(gc.x, gc.y, gc.r * 1.1)) continue;
     const life = 1 - gc.t / gc.dur;
     for (let i = 0; i < 5; i++) {
       const a = time * 0.7 + i * 1.26;
@@ -984,6 +1248,7 @@ export function drawFrame(
 
   // effects
   for (const f of w.effects) {
+    if (!visible(f.x, f.y, Math.max(80, f.r ?? 0))) continue;
     const k = f.t / f.dur;
     if (f.kind === "ring") {
       ctx.strokeStyle = f.color ?? "#fff";
@@ -1018,6 +1283,7 @@ export function drawFrame(
   // lamps glow (paris dusk)
   if (w.map.ambience === "paris") {
     for (const l of w.map.lamps) {
+      if (!visible(l.x, l.y, 75)) continue;
       const grad = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, 70);
       grad.addColorStop(0, "rgba(255,210,130,0.30)");
       grad.addColorStop(1, "rgba(255,210,130,0)");
@@ -1075,7 +1341,8 @@ export function drawMinimap(
       Math.max(1.5, b.h * sy),
     );
   for (const e of w.entities) {
-    if (e.kind === "crate" || e.kind === "truck") continue;
+    if (e.remove || e.buildingId || e.kind === "crate" || e.kind === "truck")
+      continue;
     ctx.fillStyle = e.isPlayer
       ? "#ffd75e"
       : e.remote
@@ -1101,6 +1368,10 @@ export function drawMinimap(
     ctx.beginPath();
     ctx.arc(w.order.x * sx, w.order.y * sy, 5, 0, Math.PI * 2);
     ctx.stroke();
+  }
+  if (w.objective) {
+    ctx.fillStyle = "#eee0aa";
+    ctx.fillRect(w.objective.x * sx - 3, w.objective.y * sy - 3, 6, 6);
   }
   // camera viewport
   ctx.strokeStyle = "rgba(255,255,255,0.6)";
