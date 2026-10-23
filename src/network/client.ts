@@ -152,7 +152,9 @@ export function connectWorld(options: {
             options.onNotice(
               event.code === 4001
                 ? "This session moved to another tab. Close it there before returning here."
-                : "The server rejected this connection. Return to the menu before trying again.",
+                : event.reason === "Input rate exceeded"
+                  ? "Input rate exceeded. Return to the menu to reconnect."
+                  : "The server rejected this connection. Return to the menu before trying again.",
             );
             return;
           }

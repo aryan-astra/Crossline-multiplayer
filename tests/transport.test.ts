@@ -319,7 +319,10 @@ test("malformed frames, input floods and repeated API calls are bounded", async 
     assert.equal((await invalidClosed)[0], 1008);
     const flood = await game.connect(actor.cookie);
     const floodClosed = once(flood.ws, "close");
-    for (let seq = 1; seq <= 61; seq++)
+    for (let seq = 1; seq <= 80; seq++)
+      flood.send({ v: 1, seq, requestId: `ping:${seq}`, type: "ping" });
+    await flood.wait((m) => m.type === "ack" && m.seq === 80);
+    for (let seq = 81; seq <= 280; seq++)
       flood.send({ v: 1, seq, requestId: `ping:${seq}`, type: "ping" });
     assert.equal((await floodClosed)[0], 1008);
     const statuses = [];

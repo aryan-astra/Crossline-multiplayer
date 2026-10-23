@@ -19,7 +19,8 @@ type Connection = {
   seq: number;
   alive: boolean;
   start: number;
-  messages: number;
+  tokens: number;
+  budgetAt: number;
   actions: number;
   blockedAt: number;
   invalid: number;
@@ -216,7 +217,8 @@ export function createGameServer({
         seq: 0,
         alive: true,
         start: Date.now(),
-        messages: 0,
+        tokens: 120,
+        budgetAt: performance.now(),
         actions: 0,
         blockedAt: 0,
         invalid: 0,
@@ -242,11 +244,18 @@ export function createGameServer({
         const now = Date.now();
         if (now - connection.start >= 1000) {
           connection.start = now;
-          connection.messages = 0;
           connection.actions = 0;
         }
-        if (++connection.messages > 60)
+        const budgetNow = performance.now();
+        connection.tokens = Math.min(
+          120,
+          connection.tokens +
+            Math.max(0, budgetNow - connection.budgetAt) * 0.06,
+        );
+        connection.budgetAt = budgetNow;
+        if (connection.tokens < 1)
           return websocket.close(1008, "Input rate exceeded");
+        connection.tokens--;
         let message;
         try {
           message = binary ? null : parseMessage(JSON.parse(raw.toString()));
