@@ -20,17 +20,15 @@ const CIV_CLOTH = [
 
 /* ------------ ground texture (cached) ------------ */
 export function buildGround(map: MapDef): HTMLCanvasElement {
-  let seed = map.ambience === "delhi" ? 71 : 113;
-  const random = () => {
-    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    return seed / 4294967296;
-  };
   const c = document.createElement("canvas");
   c.width = map.w;
   c.height = map.h;
   const g = c.getContext("2d")!;
   if (map.ambience === "delhi") {
-    g.fillStyle = "#c7ae83";
+    const ground = g.createLinearGradient(0, 0, map.w, map.h);
+    ground.addColorStop(0, "#cdb890");
+    ground.addColorStop(1, "#bba47d");
+    g.fillStyle = ground;
     g.fillRect(0, 0, map.w, map.h);
     // paving tiles inside complex
     g.fillStyle = "#cdb489";
@@ -49,23 +47,21 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
       g.lineTo(1500, y);
       g.stroke();
     }
-    // speckle
-    for (let i = 0; i < 2600; i++) {
-      g.fillStyle = `rgba(${100 + random() * 60},${80 + random() * 50},40,${random() * 0.08})`;
-      g.fillRect(random() * map.w, random() * map.h, 3, 3);
-    }
     for (const l of map.lawns) {
-      g.fillStyle = "#7d9a52";
+      const grass = g.createLinearGradient(l.x, l.y, l.x + l.w, l.y + l.h);
+      grass.addColorStop(0, "#86a55b");
+      grass.addColorStop(1, "#708f4b");
+      g.fillStyle = grass;
       g.fillRect(l.x, l.y, l.w, l.h);
-      g.fillStyle = "rgba(60,90,35,0.25)";
-      for (let i = 0; i < (l.w * l.h) / 300; i++)
-        g.fillRect(l.x + random() * l.w, l.y + random() * l.h, 4, 2);
       g.strokeStyle = "#5c7a3a";
       g.lineWidth = 3;
       g.strokeRect(l.x, l.y, l.w, l.h);
     }
   } else {
-    g.fillStyle = "#a8a49b";
+    const ground = g.createLinearGradient(0, 0, 0, map.h);
+    ground.addColorStop(0, "#b3afa5");
+    ground.addColorStop(1, "#99968e");
+    g.fillStyle = ground;
     g.fillRect(0, 0, map.w, map.h);
     // plaza paving grid
     g.strokeStyle = "rgba(70,68,62,0.22)";
@@ -88,10 +84,6 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
       g.beginPath();
       g.arc(1025, 695, r, 0, Math.PI * 2);
       g.stroke();
-    }
-    for (let i = 0; i < 2200; i++) {
-      g.fillStyle = `rgba(60,58,52,${random() * 0.07})`;
-      g.fillRect(random() * map.w, random() * map.h, 3, 3);
     }
   }
   // roads
@@ -848,6 +840,14 @@ function drawPerson(
     g.stroke();
     g.setLineDash([]);
   }
+  if (e.wanted > 0) {
+    g.fillStyle = "#ff806d";
+    g.beginPath();
+    g.arc(e.x, e.y - 17, 4, 0, Math.PI * 2);
+    g.fill();
+    if (w.selectedId === e.id)
+      label(g, e.x, e.y - 28, "WANTED " + e.wanted, "#ff8875");
+  }
   // rank pips for police
   if ((e.kind === "police" || e.kind === "military") && e.rank > 0) {
     g.fillStyle = "#ffd75e";
@@ -1326,6 +1326,8 @@ export function drawMinimap(
   w: World,
   mw: number,
   mh: number,
+  viewWidth: number,
+  viewHeight: number,
 ) {
   const sx = mw / w.map.w,
     sy = mh / w.map.h;
@@ -1349,15 +1351,17 @@ export function drawMinimap(
         ? "#4de8c2"
         : e.state === "detained"
           ? "#6b7686"
-          : e.kind === "protester"
-            ? e.violentT > 0
-              ? "#ff4632"
-              : "#ff9c4d"
-            : e.kind === "police"
-              ? "#4da3ff"
-              : e.kind === "military"
-                ? "#8fd45e"
-                : "#b8b8b8";
+          : e.wanted > 0
+            ? "#ffd75e"
+            : e.kind === "protester"
+              ? e.violentT > 0
+                ? "#ff4632"
+                : "#ff9c4d"
+              : e.kind === "police"
+                ? "#4da3ff"
+                : e.kind === "military"
+                  ? "#8fd45e"
+                  : "#b8b8b8";
     ctx.beginPath();
     ctx.arc(e.x * sx, e.y * sy, e.isPlayer ? 3 : 1.7, 0, Math.PI * 2);
     ctx.fill();
@@ -1376,7 +1380,7 @@ export function drawMinimap(
   // camera viewport
   ctx.strokeStyle = "rgba(255,255,255,0.6)";
   ctx.lineWidth = 1;
-  const vw = (window.innerWidth / w.zoom) * sx,
-    vh = (window.innerHeight / w.zoom) * sy;
+  const vw = (viewWidth / w.zoom) * sx,
+    vh = (viewHeight / w.zoom) * sy;
   ctx.strokeRect(w.camX * sx - vw / 2, w.camY * sy - vh / 2, vw, vh);
 }

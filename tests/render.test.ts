@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createWorld } from "../src/game/engine";
-import { drawFrame } from "../src/game/render";
+import { drawFrame, drawMinimap } from "../src/game/render";
 import { initializeWorldRules } from "../src/game/world-rules";
 
 function recordingContext(labels: string[]): CanvasRenderingContext2D {
@@ -124,4 +124,48 @@ test("downed NPCs do not advertise a player respawn lifecycle", () => {
   labels.length = 0;
   drawFrame(recordingContext(labels), w, 800, 600, {} as HTMLCanvasElement);
   assert.ok(labels.includes("RESPAWNING"));
+});
+
+test("wanted protesters are visibly marked in the world", () => {
+  const w = createWorld("delhi", "watcher", "Test", "test", 1000, 0);
+  const target = w.entities.find((entity) => entity.kind === "protester")!;
+  Object.assign(target, { x: 500, y: 500, wanted: 2 });
+  w.entities = [target];
+  w.map.buildings = [];
+  w.map.trees = [];
+  w.map.lamps = [];
+  w.objective = undefined;
+  w.resources = [];
+  w.camX = 500;
+  w.camY = 500;
+  w.selectedId = target.id;
+  const labels: string[] = [];
+  drawFrame(recordingContext(labels), w, 400, 400, {} as HTMLCanvasElement);
+  assert.ok(labels.includes("WANTED 2"));
+});
+
+test("minimap viewport uses the actual game canvas dimensions", () => {
+  const w = createWorld("delhi", "watcher", "Test", "test", 1000, 0);
+  w.camX = 1000;
+  w.camY = 800;
+  w.zoom = 1;
+  let viewport: number[] = [];
+  const ctx = new Proxy(
+    {},
+    {
+      get: (_target, key) =>
+        key === "strokeRect"
+          ? (...args: number[]) => {
+              viewport = args;
+            }
+          : () => {},
+    },
+  ) as CanvasRenderingContext2D;
+  drawMinimap(ctx, w, 240, 164, 800, 600);
+  const sx = 240 / w.map.w,
+    sy = 164 / w.map.h;
+  const expected = [600 * sx, 500 * sy, 800 * sx, 600 * sy];
+  assert.equal(viewport.length, expected.length);
+  for (const [index, value] of expected.entries())
+    assert.ok(Math.abs(viewport[index] - value) < 1e-10);
 });

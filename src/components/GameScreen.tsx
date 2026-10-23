@@ -8,7 +8,8 @@ import {
   constrainCamera,
   trackCamera,
 } from "@/game/camera";
-import { connectWorld } from "@/network/client";
+import { interactionPrompt } from "@/game/prompts";
+import { connectWorld, isStaleSnapshot } from "@/network/client";
 import type { Command, Snapshot } from "@/network/protocol";
 import type { InputState, MapId, Role, World } from "@/game/types";
 
@@ -77,7 +78,11 @@ export default function GameScreen({
   const [frameMs, setFrameMs] = useState(0);
   const [stake, setStake] = useState(5);
   const [running, setRunning] = useState(false);
-  const [hudCollapsed, setHudCollapsed] = useState(false);
+  const [hudCollapsed, setHudCollapsed] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 600px)").matches,
+  );
 
   const select = (id: number | null) => {
     selectedRef.current = id;
@@ -93,14 +98,19 @@ export default function GameScreen({
     if (!sendRef.current(message))
       setNotice("Waiting for the server connection.");
   };
-  const action = (kind: Extract<Command, { type: "action" }>["action"]) => {
-    if (!paused.current)
+  const actionRef = useRef<
+    (kind: Extract<Command, { type: "action" }>["action"]) => void
+  >((kind) => {
+    if (!paused.current) {
       send({
         type: "action",
         action: kind,
         ...(selectedRef.current ? { targetId: selectedRef.current } : {}),
       });
-  };
+    }
+  });
+  const action = (kind: Extract<Command, { type: "action" }>["action"]) =>
+    actionRef.current(kind);
 
   useEffect(() => {
     if (panel) modal.current?.showModal();
@@ -117,6 +127,8 @@ export default function GameScreen({
 
   useEffect(() => {
     let stopped = false;
+    let connectionEpoch = 0,
+      snapshotEpoch = -1;
     const connection = connectWorld({
       name,
       join: () => ({
@@ -126,6 +138,7 @@ export default function GameScreen({
       }),
       onStatus: (next) => {
         if (!stopped) {
+          if (next !== "Connected") connectionEpoch++;
           setStatus(next);
           if (next === "Connected") setNotice("");
           if (next !== "Connected") input.current = emptyInput();
@@ -139,10 +152,15 @@ export default function GameScreen({
         const old = latest.current;
         if (
           old &&
-          old.world.map.id === next.world.map.id &&
-          next.tick < old.tick
+          isStaleSnapshot(
+            next.tick,
+            old.tick,
+            old.world.map.id === next.world.map.id,
+            snapshotEpoch !== connectionEpoch,
+          )
         )
           return;
+        snapshotEpoch = connectionEpoch;
         previous.current = old;
         latest.current = next;
         receivedAt.current = performance.now();
@@ -316,7 +334,14 @@ export default function GameScreen({
           time: w.time + Math.min(0.15, (now - receivedAt.current) / 1000),
         };
         drawFrame(ctx, presentation, width, height, grounds.get(w.map.id)!);
-        drawMinimap(miniCtx, presentation, mini.width, mini.height);
+        drawMinimap(
+          miniCtx,
+          presentation,
+          mini.width,
+          mini.height,
+          width,
+          height,
+        );
         total += performance.now() - start;
         frames++;
         if (now - metricAt > 1000) {
@@ -367,11 +392,11 @@ export default function GameScreen({
       }
       if (event.repeat) return;
       if (key === "e" || key === " ") {
-        sendRef.current({ type: "action", action: "primary" });
+        actionRef.current("primary");
         event.preventDefault();
       }
-      if (key === "q") sendRef.current({ type: "action", action: "secondary" });
-      if (key === "t") sendRef.current({ type: "action", action: "special" });
+      if (key === "q") actionRef.current("secondary");
+      if (key === "t") actionRef.current("special");
       if (key === "f") sendRef.current({ type: "action", action: "interact" });
       if (key === "b")
         sendRef.current({
@@ -439,7 +464,25 @@ export default function GameScreen({
   const actualRole = snapshot?.self.role ?? role,
     w = snapshot?.world,
     p = w?.player;
+  const nearbyPrompt = interactionPrompt(w, actualRole);
   const selected = w?.entities.find((e) => e.id === selectedId && !e.remove);
+  const wantedTarget =
+    actualRole === "police" && p
+      ? w?.entities
+          .filter(
+            (e) =>
+              !e.remove &&
+              e.kind === "protester" &&
+              e.wanted > 0 &&
+              e.state !== "down" &&
+              e.state !== "detained",
+          )
+          .sort(
+            (a, b) =>
+              Math.hypot(a.x - p.x, a.y - p.y) -
+              Math.hypot(b.x - p.x, b.y - p.y),
+          )[0]
+      : undefined;
   const online = status === "Connected" && !!snapshot;
   const disabled = !online || !!panel;
   const symbol = w?.map.id === "paris" ? "€" : "₹";
@@ -586,6 +629,11 @@ export default function GameScreen({
         <button onClick={() => togglePanel("settings")}>Settings</button>
         <button onClick={onExit}>Leave</button>
       </header>
+      {(notice || status !== "Connected") && (
+        <div className="game-toast" role="status">
+          {notice || status}
+        </div>
+      )}
       <aside
         id="world-hud"
         className="game-panel"
@@ -632,6 +680,32 @@ export default function GameScreen({
                 : ""}
             </p>
           </>
+        )}
+        {actualRole === "police" && (
+          <div className="dispatch-card">
+            <p className="eyebrow">WANTED PERSON</p>
+            {wantedTarget ? (
+              <>
+                <b>{wantedTarget.name}</b>
+                <span>
+                  Level {wantedTarget.wanted} ·{" "}
+                  {Math.round(
+                    Math.hypot(
+                      wantedTarget.x - (p?.x ?? 0),
+                      wantedTarget.y - (p?.y ?? 0),
+                    ),
+                  )}{" "}
+                  units away
+                </span>
+                <button onClick={() => select(wantedTarget.id)}>
+                  Track person
+                </button>
+              </>
+            ) : (
+              <span>No active wanted markers in this area.</span>
+            )}
+            <small>Detain only when the person is actively violent.</small>
+          </div>
         )}
         <label className="meter">
           UNREST {Math.round(w?.tension ?? 0)}%
@@ -733,6 +807,7 @@ export default function GameScreen({
               .map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.name} / {e.kind}
+                  {e.wanted > 0 ? " · Wanted " + e.wanted : ""}
                 </option>
               ))}
           </select>
@@ -895,9 +970,9 @@ export default function GameScreen({
       </aside>
       <div className="game-bottom">
         <p>
-          {command
-            ? "Click the city to place your formation."
-            : help[actualRole]}
+          <strong className="interaction-prompt">
+            {command ? "Click the city to place your formation." : nearbyPrompt}
+          </strong>
           <br />
           <span>
             WASD / arrows move · Shift run · World continues while settings are

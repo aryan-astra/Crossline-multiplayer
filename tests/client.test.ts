@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connectWorld, readServerMessage } from "../src/network/client";
+import {
+  connectWorld,
+  isStaleSnapshot,
+  readServerMessage,
+} from "../src/network/client";
 
 test("client rejects malformed JSON and incompatible server messages", () => {
   for (const raw of [
@@ -15,6 +19,12 @@ test("client rejects malformed JSON and incompatible server messages", () => {
     readServerMessage('{"v":1,"type":"error","seq":1,"message":"Not allowed"}'),
     { v: 1, type: "error", seq: 1, message: "Not allowed" },
   );
+});
+
+test("same-world tick resets are accepted only after reconnect", () => {
+  assert.equal(isStaleSnapshot(4, 100, true, false), true);
+  assert.equal(isStaleSnapshot(4, 100, true, true), false);
+  assert.equal(isStaleSnapshot(4, 100, false, false), false);
 });
 
 test("connection sequences commands, reuses cookie identity on reconnect, and cancels on exit", async (t) => {

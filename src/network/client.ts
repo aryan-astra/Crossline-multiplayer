@@ -38,6 +38,15 @@ export function readServerMessage(raw: string): ServerMessage | null {
   return snapshot;
 }
 
+export function isStaleSnapshot(
+  nextTick: number,
+  currentTick: number,
+  sameWorld: boolean,
+  connectionReset: boolean,
+) {
+  return sameWorld && !connectionReset && nextTick < currentTick;
+}
+
 export function connectWorld(options: {
   name: string;
   join: () => Extract<Command, { type: "join" }>;
