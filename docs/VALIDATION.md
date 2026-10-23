@@ -2,6 +2,29 @@
 
 23 October 2026, Windows, Node24.20.0/npm12.2.0. This record supersedes the earlier local-practice validation. Original prototype directories remain preserved and were not executed.
 
+## Latest geography, controls and spectator pass
+
+`npm run validate` passed with **80 tests, zero failures/skips**, formatting, lint, TypeScript and production build. The subsequent queued-input limiter change passed focused ESLint and all 13 transport/render tests; the production server was rebuilt and restarted using the same isolated QA database. Runtime dependency audit still reports zero vulnerabilities. Earlier measurements below predate the OSM geometry and do not certify its cost or endurance.
+
+Both playable maps now load OSM building rings and street lines. Geography tests cover open anchors/spawns, routable depots, polygon clearance and collinear/thin-wall navigation. Existing tests verify actual delivery on all four supply routes. Legacy checkpoint migration preserves the profile and event sequence while updating geometry. Three audio tests cover distance/pan, event deduplication, mute/reset history and node cleanup. The render test limits overlapping crowd speech without changing simulation state.
+
+Two independent browser cookie sessions at `localhost:3004` (protester) and `qa.localhost:3004` (spectator) were connected together. Across **91 matching ticks**, the spectator received the exact player position and objective from the player session. After clicking Chant and holding D, x changed1002.2154758171598→1079.2154758171607; credits45→46 and score0→1. A held touch movement button also changed authoritative y750→724.3333333333336. Both browser warning/error logs were empty in the final build.
+
+The market header link opened real price-history charts and holdings. A purchase changed credits69→48 with one ORDR unit; selling returned holdings to zero and credits65. Funding debited20 credits (65→45) and emitted the truck-en-route event. The45-credit balance survived the production restart. Settings enabled Web Audio at0.4 without browser errors; no physical headphone calibration or recorded city ambience was checked.
+
+At390×844, the HUD started collapsed, document width stayed390, header ended at102.5 and the action bar began at670.4. Expanded inspector placement also stayed between the header and footer. Desktop inspector/header/footer did not overlap. The corrected favicon and retained menu imagery loaded. Screenshots are local ignored artifacts (`artifacts/mobile-player.png`, `artifacts/spectator-market.png`). Render work during the short spectator samples was5.7–8.1ms with roughly53–60 entities; this is not sustained FPS certification.
+
+Latest `npm run benchmark`: 900 ticks per scenario, seed42, headless simulation only. The local production preview remained running, so these are development-machine measurements with contention, not isolated capacity results.
+
+| Humans/bots | p50 tick ms | p95 tick ms | maximum ms | elapsed ms |
+| ----------- | ----------: | ----------: | ---------: | ---------: |
+| 1/20        |       3.630 |      21.147 |   1135.193 |       7111 |
+| 2/50        |       6.744 |      14.308 |    947.180 |       8044 |
+| 5/100       |      15.881 |      28.553 |    600.155 |      15786 |
+| 10/adaptive |       7.363 |      14.150 |    639.936 |       7662 |
+
+Static navigation edges are swept once and cached; sorting candidate cells no longer allocates coordinate objects per comparison. Cold navigation still has substantial spikes, and both worlds share one server thread. Actual browser snapshots sampled202.6–202.8KB, approximately2MB/s/client at10Hz before framing. Map handshakes/deltas and navigation warm-up/spatial queries remain high-priority work. The previous30-minute endurance run was not repeated on the OSM maps. Public concurrency, day-long economy balance and low-end physical-device comfort remain unverified.
+
 ## Automated checks
 
 - `npm run validate` passes after the player framing pass: Prettier, ESLint, TypeScript, **73 tests passed, zero failed/skipped**, production server compilation and Next16.4.2 build. The deterministic 300-second twin-world scenario and Next production static generation succeeded.

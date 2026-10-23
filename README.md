@@ -17,7 +17,7 @@ Set HOST=0.0.0.0 intentionally for LAN play and use the host's LAN address. Sepa
 
 ## Play
 
-Choose Mantar Jantar or Paris / Republica Plaza. WASD/arrows move, Shift sprints, E/Space is the role's primary action, Q secondary, T supplied police gas. F collects essentials or interacts with the Constitution Book. B enters/exits near a doorway. C then click commands police. Spectators pan/zoom, inspect/follow people, trade, predict outcomes or fund deliveries. Touch controls are included. Settings suspend your input; the public world continues.
+Choose Jantar Mantar, New Delhi or Place de la République, Paris. WASD/arrows move, Shift sprints, E/Space is the role's primary action, Q secondary, T supplied police gas. F collects essentials or interacts with the Constitution Book. B enters/exits near a doorway. C then click commands police. Spectators pan/zoom, inspect/follow people, trade, predict outcomes or fund deliveries. Touch controls are included. Settings suspend your input; the public world continues.
 
 Military appointments are temporary and earned through police performance. Death requires a 30-second wait and explicit protester/police respawn choice. Custody is temporary. New guests receive 69 persistent fictional credits once; life allowance is separate. No real money or payment system exists.
 
@@ -31,6 +31,8 @@ Military appointments are temporary and earned through police performance. Death
 - `tests/`, `docs/`: regressions, audits, measured validation and limits.
 
 Original prototypes remain preserved locally and ignored. Source A supplied maps, rendering and rules; Source B supplied formation and rally algorithms. Menu images remain separate from collision geometry.
+
+The playable street layouts and building footprints now use OpenStreetMap extracts for Jantar Mantar and Place de la République. Facades, interiors and events are fictional; see [map sources and ODbL attribution](docs/MAP_SOURCES.md). Spectators can open **Markets & supplies** directly from the header to see price histories, holdings, virtual trades and supply funding. Settings includes opt-in directional event sound.
 
 ## Validate
 
