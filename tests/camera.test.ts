@@ -12,6 +12,7 @@ test("only watcher can change role zoom, including malformed wheel values", () =
     for (const zoom of [0, 0.1, 1, 100, NaN, Infinity])
       assert.equal(clampZoom(role, zoom), cameraZoom(role));
   }
+  assert.ok(cameraZoom("protester") < 1);
   assert.ok(cameraZoom("protester") > cameraZoom("police"));
   assert.ok(cameraZoom("police") > cameraZoom("military"));
   assert.equal(clampZoom("watcher", 0), 0.45);

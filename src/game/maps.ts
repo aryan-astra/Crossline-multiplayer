@@ -336,7 +336,7 @@ function paris(): MapDef {
       { x: 1700, y: 1100 },
     ],
     spawns: {
-      protester: { x: 90, y: 760 },
+      protester: { x: 480, y: 760 },
       police: { x: 2050, y: 755 },
       military: { x: 1850, y: 740 },
       civilian: { x: 1200, y: 1080 },

@@ -58,6 +58,23 @@ test("fixed movement normalizes diagonals, follows camera and respects buildings
   assert.equal(w.player!.x, 521);
 });
 
+test("Paris protesters spawn on open ground beside the gathering", () => {
+  const w = createWorld("paris", "protester", "Tester", "local", 69, 0, 42);
+  const spawn = w.map.spawns.protester;
+  const crowd = w.entities.filter(
+    (entity) => entity.kind === "protester" && !entity.isPlayer,
+  );
+  assert.deepEqual(collideBuildings(w.map, spawn.x, spawn.y, 9), spawn);
+  assert.ok(
+    Math.min(
+      ...crowd.map((entity) =>
+        Math.hypot(entity.x - spawn.x, entity.y - spawn.y),
+      ),
+    ) < 220,
+  );
+  assert.deepEqual(w.player && { x: w.player.x, y: w.player.y }, spawn);
+});
+
 test("fixed inputs and seed reproduce a full headless round independently", () => {
   const a = world(),
     b = world();

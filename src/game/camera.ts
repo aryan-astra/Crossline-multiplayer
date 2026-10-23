@@ -4,7 +4,7 @@ type Position = { x: number; y: number };
 type Size = { w: number; h: number };
 
 export function cameraZoom(role: Role): number {
-  return { protester: 1.15, police: 0.95, military: 0.72, watcher: 0.85 }[role];
+  return { protester: 0.98, police: 0.95, military: 0.72, watcher: 0.85 }[role];
 }
 
 export function clampZoom(role: Role, requested: number): number {
