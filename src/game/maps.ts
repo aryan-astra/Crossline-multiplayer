@@ -106,7 +106,7 @@ function delhi(): MapDef {
   );
   return {
     id: "delhi",
-    name: "Meridian Quarter",
+    name: "Mantar Jantar",
     country: "Fictional city inspired by Delhi",
     w: 2200,
     h: 1500,
@@ -263,7 +263,7 @@ function paris(): MapDef {
   );
   return {
     id: "paris",
-    name: "Concord Square",
+    name: "Paris / Republica Plaza",
     country: "Fictional city inspired by Paris",
     w: 2200,
     h: 1500,

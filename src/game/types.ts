@@ -19,6 +19,9 @@ export interface Building extends Rect {
   maxHp: number;
   broken?: boolean;
   awning?: string;
+  id?: string;
+  entrance?: { x: number; y: number };
+  interior?: { w: number; h: number; capacity: number; obstacles: Rect[] };
 }
 
 export interface MapDef {
@@ -73,6 +76,21 @@ export type EntityState =
 
 export interface Entity {
   id: number;
+  profileId?: string;
+  moving?: boolean;
+  running?: boolean;
+  evasionRewards?: number;
+  hunger: number;
+  thirst: number;
+  wanted: number;
+  wantedUntil: number;
+  evasionAt?: number;
+  custodyUntil?: number;
+  deathUntil?: number;
+  imminentThreatUntil?: number;
+  buildingId?: string;
+  journalist?: boolean;
+  objectiveUntil?: number;
   kind: "protester" | "police" | "military" | "civilian" | "truck" | "crate";
   faction: Faction;
   name: string;
@@ -188,7 +206,59 @@ export interface WorldOrder {
   issuer: string;
 }
 
+export interface WorldEvent {
+  id: number;
+  tick: number;
+  time: number;
+  type:
+    | "chant"
+    | "death"
+    | "detention"
+    | "unjustified_detention"
+    | "release"
+    | "wanted"
+    | "evasion"
+    | "objective_capture"
+    | "objective_defense"
+    | "objective_contribution"
+    | "news"
+    | "supply_delivery"
+    | "resource_collection";
+  actorId?: number;
+  targetId?: number;
+  amount?: number;
+  faction?: Faction;
+  details?: string;
+}
+export interface ConstitutionBook {
+  x: number;
+  y: number;
+  status: "protected" | "contested" | "recovering";
+  progress: number;
+  phaseT: number;
+  recoveryT: number;
+  cycle: number;
+  contributors: Record<string, number>;
+  captureSeconds: number;
+  defenseSeconds: number;
+  recoverySeconds: number;
+}
 export interface World {
+  factionScores?: { protester: number; police: number };
+  persistent?: boolean;
+  tick: number;
+  eventSeq: number;
+  events: WorldEvent[];
+  objective?: ConstitutionBook;
+  resources?: {
+    id: string;
+    x: number;
+    y: number;
+    food: number;
+    water: number;
+    nextRefill: number;
+  }[];
+  populationAt?: number;
   rngState: number;
   feedSeq: number;
   map: MapDef;

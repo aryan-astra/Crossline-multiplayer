@@ -1,54 +1,59 @@
-# Crossline simulation
+# Persistent simulation
 
-## Implemented scope
+`src/game/engine.ts` and `src/game/world-rules.ts` contain headless TypeScript rules. The authoritative service owns account identities, appointments, balances and durable transactions; these modules own physical entities, timed actions, objectives, needs and transient events. Rendering never advances or mutates rules.
 
-`src/game/engine.ts` is a headless TypeScript rules module. It owns entity state, interactions, timed effects, projectiles, crowd metrics, supply delivery, and the disposable match economy. It imports world geometry, navigation, and AI helpers without React or browser APIs. `GameScreen` supplies input and scheduling; `render.ts` draws without advancing or mutating rules.
+## Ownership and stepping
 
-World types retain legacy names including `careerDetentions`, `remote`, and `lastSync`. They do not establish a career service or networking implementation. The root application starts each round with player ID `local-practice`, 1,000 virtual credits, zero career detentions, and no remote entities. All roles are available for practice; there is no trusted military unlock.
+`createWorld(map, role, name, identity, wallet, career, seed, { persistent: true })` creates continuous rules and initializes the Constitution Book, selected interiors and essentials. The legacy default remains a disposable 300-second practice world for regression compatibility. Persistent worlds ignore round-end clocks, dispersed crowds and depleted morale. They do not call `endRound` or settle a global match.
 
-## Randomness and ownership
+`spawnPlayer(world, role, name, profileId)` creates one physical entity per identity, with `isPlayer` and `remote` both true; watchers have no physical entity. `remote` now means externally driven input, not an independently approximated avatar. The authoritative driver calls `updatePlayer(world, entity, input, dt)` once for each human, then calls `update(world, dt, idleInput)` once for the shared NPC/timer step. `update` skips human movement when their entity is remote, including when `world.player` is temporarily assigned for a contextual action. `world.time` and `world.tick` advance only in `update`. Direct deltas must be finite and positive and are capped at 0.05 seconds. The service supplies fixed steps.
 
-`createWorld` accepts a seed, defaulting to `1`. Its unsigned 32-bit linear congruential generator advances with `Math.imul(state, 1664525) + 1013904223`, then divides by 2^32. Personalities, initial positions, decision variation, supplies, and markets use this per-world generator. Names use a seeded Fisher–Yates shuffle. Event and entity IDs belong to each world.
+`doAction` and `issueOrder` retain the legacy `world.player` context. The server must set and restore that pointer around the authenticated actor's action. Legacy `wallet`, `earned`, `careerDetentions` and round statistics are not account authorization or durable rewards. The persistent service consumes explicit events rather than trusting those totals.
 
-World construction clones the map template with `structuredClone`. Shop damage belongs to that round rather than mutating `MAPS` or another world. Identical seed, simulation steps, ordered actions, and input produce a reproducible rules run in the tested JavaScript environment. This is not a claim of cross-engine lockstep networking or a replay format.
+## Determinism and bounded state
 
-The renderer uses `Math.random` for decorative texture and window noise. That randomness does not consume simulation RNG or change world state; screenshots need not be pixel-identical. Animation phases follow world time. Drawing additional frames must not alter detention progress or entity timers.
+Every world owns its integer LCG state, entity IDs, event IDs and cloned map geometry. Seeded Fisher-Yates shuffling and ordered inputs reproduce rules in the tested JavaScript runtime. This is not a claim of cross-engine lockstep. Renderer cosmetic randomness consumes no simulation RNG.
 
-## Time and input
+`World.events` keeps the most recent 256 events. Each event has a monotonic per-world ID, tick, simulation time, type and optional actor/target/amount/faction/details. Events include chant, wanted, evasion, detention, unjustified detention, release, death, supply delivery, resource collection, objective capture, defense, contributions and witnessed news. Account settlement and durable event records belong to the server. Durable deduplication must include world identity and a persisted event sequence or epoch; two maps and two process lifetimes can otherwise reuse numeric IDs.
 
-`src/game/loop.ts` defines a step of 1/30 second. `advance` accumulates elapsed time, caps each added frame interval at 0.25 second, and runs complete fixed steps. Invalid or negative elapsed time is ignored. The client skips simulation while paused or hidden; blur and visibility changes clear held input and pending accumulation. Excess suspended time is discarded rather than attempting unbounded catch-up.
+Effects, gases, projectiles, feeds and price histories expire or are capped. Bets and supplies have explicit limits. Persistent population maintenance runs every five seconds: target bot counts are `max(12, 30-humans)` protesters, `max(6, 12-floor(humans/2))` police, two military and eight civilians. Each check adds or removes at most one bot per kind, with a two-bot despawn hysteresis. The original 62-bot initial population converges toward those targets. Humans are never removed by population maintenance. Public connection limits remain a service responsibility.
 
-`update` rejects invalid/non-positive deltas, caps direct-call deltas to 0.05 second, and stops after round completion. Actions use explicit engine functions. Keyboard actions occur when events arrive; reproducible tests must supply the same action ordering rather than assume equal wall-clock durations imply equal inputs.
+## World geometry and interiors
 
-HUD snapshots refresh roughly every 200 ms. Displayed frame-work timing combines update and drawing work; it is not server capacity, GPU timing, or p95 frame latency.
+Internal map IDs stay `delhi` and `paris`. Their display names are Mantar Jantar and Paris / Republica Plaza. These are fictional architecture-inspired environments, not accurate security deployments.
 
-## World and movement
+Outdoor movement uses world coordinates, radius-nine circle/rectangle collision, normalized diagonal input and collision correction after crowd separation. Direct swept-circle clearance and a cached 40-unit four-neighbor BFS grid route around buildings. Paths are reused until targets move 20 units. Grid edges are swept-tested so thin walls cannot be crossed between cell centers. Static shop damage does not remove collision geometry.
 
-The maps use internal IDs `delhi` and `paris`; the menu presents fictional Meridian Quarter and Concord Square with their architectural inspirations. Initial populations contain 34 protesters, 14 police, 4 military agents, and 10 civilians. Player-controlled roles add one entity; spectator mode adds no physical player.
+Three selected shops per map define a doorway and a shared interior template: 240 by 180 units, capacity six, two solid furniture rectangles. `enterBuilding` validates the entity, active state, physical doorway proximity and live occupancy. `buildingId` distinguishes indoor space; entity x/y become interior-local coordinates. Indoor movement uses interior bounds and furniture collision. `exitBuilding` requires returning to the interior doorway and returns to the same exterior entrance. Outdoor crowd collisions, resources, objective presence and ordinary projectile hits exclude indoor occupants. Detention channels require the same space and unobstructed interaction. The renderer hides indoor occupants from outdoor views.
 
-Buildings are axis-aligned rectangles. Movement uses a radius of 9 world units, projects overlaps out of geometry, and clamps positions inside map bounds. Player diagonal input is normalized. Crowd separation pushes nearby non-player entities apart, then reapplies building collision. This is soft separation rather than a rigid-body physics engine.
+Occupancy is derived from authoritative entities rather than maintained in a second counter. Removed/disconnected occupants stop consuming capacity. Indoor bots rest briefly and return through the doorway. The template is deliberately small; multi-floor spaces, interior pathfinding and complex furniture arrangements are not implemented.
 
-Navigation first checks a direct segment against expanded buildings. If blocked, it builds a conservative 40-unit grid cached by map identity in a `WeakMap`, finds a reachable start, and performs four-neighbor breadth-first search. Entities cache paths until destinations change; intermediate waypoints are consumed as they are reached.
+## Constitution Book cycles
 
-The grid can reject narrow passages that a continuous planner could traverse. Unreachable goals use a closest reachable endpoint; if no visible open start exists, the entity stays in place. Progress is not guaranteed through every possible custom map. Geometry changes would require cache invalidation; current broken shopfronts remain collidable rectangles. New searches can inspect the whole grid, so larger worlds and populations need profiling.
+Each map has one fixed civic objective. Defaults are 12 seconds to capture, at least two active protesters within 65 units, 180 seconds of defensive control and 60 seconds of recovery. These values are server configuration in the world state.
 
-## Roles and state transitions
+Humans call `interactObjective` within range to begin participation; the participation window expires after capture duration plus three seconds. Bots can participate through their objective behavior. Any active police/military defender in the area contests capture. Contested or unsupported progress decays. A lone protester cannot instantly capture. Defense time accrues only while defenders are present and attackers are absent.
 
-- Protesters rally, chant, react to threats, flee, and may throw when supplied. Personality parameters influence thresholds and choices.
-- Police patrol, respond to active threats, channel detention, and follow eligible formation commands. Progress belongs to one officer; cancellation or loss of valid reach clears abandoned progress. Completed detention rejects already detained, down, or removed targets.
-- Military agents patrol checkpoints and use warning/engagement rules. `roeValid` requires tension above 55, a warned active protester with recent throwing activity, range at most 240, and a target neither down nor detained. These are fictional game rules.
-- Civilians wander and flee danger. Spectators pan the camera, inspect entities, and use local market and supply controls.
+Capture/defense creates one faction event and per-entity contribution events, then enters recovery. The winning distinction goes to the eligible participant with the highest contribution, with numeric entity ID breaking ties. Contributors must still exist, be active and belong to the winning faction; departed contributors are pruned. Recovery advances the local cycle without ending the world or resetting account progression. The server applies persistent rewards and economic consequences exactly once. Objective state must be restored with world configuration if cycles are meant to survive restarts.
 
-Down and detained entities use dedicated timed paths instead of ordinary role AI. Detained bots move toward the detention zone before removal; a detained player can return to a spawn. Removed entities are filtered from the world. Commands expire rather than remaining permanent conflicting objectives.
+## Detention, wanted status and death
 
-## Lifetime and economy
+Persistent detention requires an active protester with a current validated violent timer, never merely an aggression trait or wanted designation. An officer channels within reach and clear line of interaction; movement, target disappearance, obstruction and space changes interrupt. Progress belongs to one officer. Attempting to complete custody on a peaceful target emits an unjustified-detention penalty event and does not arrest them. A successful transition emits once and starts 20 seconds of temporary custody. The character stays alive, releases in place, and is not respawned. An indoor detainee is brought through that building's entrance before custody.
 
-Rounds last at most 300 simulation seconds and can end earlier when the crowd disperses or morale collapses. End-of-round handling rejects repeated execution, liquidates holdings, and refunds open bets. Betting statuses prevent already resolved bets being paid by repeated updates. This in-memory behavior is not durable transactional settlement.
+Qualifying stone throws increment wanted level to a maximum of five and refresh a 90-second decay deadline. Subsequent levels decay every 30 seconds. One qualifying evasion check occurs after 60 seconds, only if active police were actually nearby; at most three checks are eligible per life. Wanted status never authorizes military fire by itself.
 
-Market updates run approximately every 1.5 simulation seconds. Stakes, quantities, and supply amounts are validated by engine actions. Bets are capped at 100 records; event feed at 40 entries; instrument histories at 80 samples. Supply creation is bounded by truck/crate counts. Effects, gas, projectiles, and removed entities expire through updates. Ordinary agents are not endlessly respawned.
+Persistent military fire additionally requires an imminent threat timer, recent active violence, an active target, a prior warning, tension above 55, valid range and line of sight. Imminent threat is set after an actual damaging stone impact leaves a target at 25 HP or lower, rather than for simply carrying or throwing an object. This is an explicit fictional game rule, not real-world legal or tactical guidance. Fire at ineligible targets is withheld.
 
-Linear neighbor scans and pairwise separation produce quadratic work as the crowd grows. No thousand-agent, mobile, or server-capacity claim is made. Persistent wallets would additionally need integer ledger units, authentication, durable idempotency, and atomic settlement; none is implemented.
+Zero health enters `down`, emits death once, and sets `deathUntil` 30 seconds ahead. Persistent human bodies never automatically respawn: the service validates cooldown, role reassignment, appointment loss and new-life resources. Persistent NPC bodies expire and population maintenance can replace them. Death and detention remain separate transitions.
 
-## Verification
+## Needs and supplies
 
-Headless coverage lives in `tests/simulation.test.ts`, `tests/ai.test.ts`, `tests/loop.test.ts`, and `tests/render.test.ts`. Run `npm test`; consult the README validation record for actual results. Expand unreachable-goal recovery, adversarial geometry, larger crowds, and deterministic action replay before promising those capabilities.
+Hunger and thirst start at 100 and decay slowly, stopping at 20 without unattended starvation damage. Values below 30 reduce player movement speed by 20%. Two public essential stations per map provide food/water independently of spectator wealth. Each holds up to six of each resource and replenishes three every 60 seconds. Collection validates physical reach and need, consumes stock and replenishes at most 40 need units. NPCs seek stocked resources when needs are low.
+
+`spawnSupply(world, faction)` creates a bounded navigable delivery after the server validates and records funding. Trucks unload finite crates; stone inventory is capped at 12 and gas at three. Vehicle collision currently uses person-sized clearance; larger footprints are needed before vehicle combat or driving gameplay.
+
+## Verification and limits
+
+`tests/world-rules.test.ts` exercises persistent stepping beyond 300 seconds, idempotent human spawning, capture/contesting/recovery, defensive cycles, custody/release, death cooldown, unjustified detention, military constraints, interior occupancy/collision/doors, wanted decay, essential replenishment, witnessed/bounded events and population caps. Existing seeded simulation, collision, navigation, projectile, finance and supply-route regressions remain.
+
+A successful unit run does not establish browser synchronization, durable account settlement, transport security, realistic Android performance or restart persistence; those need service and browser tests. Pathfinding remains coarse and can hold at a nearest reachable endpoint on arbitrary disconnected maps. Existing four supply routes are tested. Geometry cache invalidation, adaptive distant simulation and spatial hashing remain future performance work.

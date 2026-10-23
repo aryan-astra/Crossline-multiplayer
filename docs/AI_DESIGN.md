@@ -1,31 +1,31 @@
-# AI design
+# Autonomous behavior
 
-Crossline currently runs autonomous agents inside one browser's local practice world. They are rule-based simulation agents, not remotely synchronized players. No trained model, LLM service or paid inference dependency is used.
+## Existing foundation retained
 
-## Implemented behavior
+The engine retains Source A's explainable finite-state behavior, per-agent traits, think timers, movement/collision, detention channel, fear response, supplies and civilian conversion. Source B contributes tested `formationSlot`, which centers officers perpendicular to their advance, and deterministic golden-angle `rallyTarget`, which spreads agents around a rally point. Neither helper consumes random state.
 
-`src/game/engine.ts` retains Source A's typed entity states and personality parameters: aggression, courage, discipline, greed, chattiness and a personal offset seed. Not every parameter drives a distinct decision; their existence does not imply a sophisticated utility model. Protesters alternate marching/chanting, react to gas and nearby threats, and can escalate by throwing. Police pursue eligible protesters, channel detention, respond to orders according to discipline/rank, and form a line. Military warns nearby protesters and uses the same `roeValid` gate as player firing: active recent violent threat, warning, tension above 55, valid target state and range. Civilians wander, flee trouble, and can join the crowd.
+Each world owns its RNG and fixed-step rules. Personalities affect aggression, courage, discipline and chattiness. Cosmetic appearance is independent from faction decisions and personality. There are no LLM calls, model training or paid AI dependencies.
 
-Protester/police/military tactical decisions generally recur at approximately 0.3–0.65 simulation seconds. Movement continues between decisions. Civilian decisions use a longer interval. Local threat checks and some state transitions still happen per simulation step. These are bounded heuristic state machines, not independent planning processes.
+## Persistent behavior
 
-Randomness is owned by each world. The integer LCG advances from the seed supplied to `createWorld`; unrelated worlds do not share RNG state. The browser driver uses fixed simulation steps. Reproducibility means the same seed, ordered action inputs and update steps reproduce the same state in the tested runtime; cross-engine floating-point lockstep has not been established.
+Organized nonviolent protesters with higher discipline approach the Constitution Book and participate when within capture range. Less organized agents retain rallying/chanting and state-dependent escalation. Fear from nearby gas or threats takes precedence over objective pursuit. A fleeing agent near an accessible doorway can shelter, rest for ten seconds and exit through that doorway. Peaceful outcomes remain possible; no fixed timer forces a particular bot to become violent.
 
-## What was integrated from Source B
+Police pursue current validated violent actors, use timed nonlethal detention, and obey permitted formation commands according to rank/discipline. Higher-ranked unassigned police guard the civic objective. Pure personality suspicion no longer authorizes custody in persistent mode. Channels clear if ownership, target state, space, range or obstacle visibility changes. Multiple officers cannot independently receive the same detention transition.
 
-`src/game/ai.ts` implements `formationSlot(order, members, me, spacing=26)`, adapted from FLASHPOINT. It computes a squad centroid, points the advance direction toward the order and spaces officers on its perpendicular. Offsets are centered using `(index - (count - 1)/2) * spacing`. Coincident centroid/order uses a stable vertical heading. The root police order path calls this function rather than stacking complying officers at a single coordinate.
+Military NPCs retain checkpoint patrol and warnings, but persistent fire uses the same restrictive eligibility function as humans: imminent harmful behavior, recent active violence, warning, tension/range and clear visibility. Wanted score alone does not permit firing. This is a fictional game constraint.
 
-The same module includes tested `rallyTarget`, the Source B golden-angle milling formula: angle `id*2.399 + time*0.03`, radius fraction `0.25 + ((id*37)%60)/100`. It consumes no RNG. The engine calls it when selecting a march target around Source A's multiple rally points, using a 100-unit radius. This integrates personal spreading; it does not import B's entire cohesion/separation system.
+Civilians wander, react to danger and can join crowds. Two designated civilian units are journalists; new populations replace reporter slots when necessary. A reporter emits news only when active, in the same space and within 300 units of an event subject, with outdoor line of sight. News derives from authoritative events rather than invented browser messages. Reporters do not learn events globally.
 
-Source B's entire police/military/protester FSM was not copied. Its exaggerated velocity intercept, player-custody reset, missing route planning and misuse of detention state for voluntary exits make a wholesale merge unsafe. Its four-squad commander is a future design reference; the current root command model remains Source A's rank-dependent set of complying officers.
+Low-need NPCs seek stocked public food/water stations, using ordinary navigation, then consume finite resource stock. Needs never cause inevitable unattended starvation deaths. Shelter/needs are bounded game behaviors rather than economic agents with pretend wallets.
 
-## Movement and lifecycle constraints
+## Population and cost
 
-Root movement uses `src/game/navigation.ts` waypoint routing and collision geometry, followed by the engine's collision correction. This makes navigation independent of presentation coordinates. Navigation is deliberately coarse; dense crowds, narrow gates, formations and dynamic body blocking need longer soak tests and profiling before stronger liveness claims.
+A five-second maintenance cadence targets fewer bots as human population rises. Bot counts have minimums, maxima and despawn hysteresis; each maintenance pass changes at most one entity per faction. NPC deaths/custody departures can be replaced without creating an unbounded population. Real humans are never despawned to meet the bot budget.
 
-Detention has an explicit channel owner and rejects targets already down, removed or detained. Lost channels clear progress. Actions reject inactive players. Removed entities are filtered, and repeat detention cannot award the same transition twice. Projectile and delayed effects must be reviewed alongside state changes because a valid target at action time may be unavailable at impact time.
+Bots use cached coarse navigation with swept-safe edges and ordinary local separation. Police/protester/military think approximately every 0.3-0.65 simulated seconds, while civilians think less frequently. Some fear, movement and needs checks occur every fixed step. Current linear neighbor scans and pairwise separation remain appropriate only for measured modest populations. Full distance-based simulation levels, group crowd approximation and spatial hashing are not implemented.
 
-## Validation and remaining work
+## Tests and current boundaries
 
-`tests/ai.test.ts` verifies formation spacing, centering, stable fallback, deterministic milling and radius bounds. Additional engine tests cover seeded behavior and gameplay rules; the authoritative list of executed checks belongs in the validation report/README, rather than assuming all planned tests pass.
+AI helper tests cover formation spacing/centering and deterministic rally offsets. Simulation tests cover seeded reproduction, inactive-target guards, movement, collision after separation, obstacle routing, single-owner custody, expiring commands, strict fire eligibility and all four supply routes. Persistent rules tests cover continuous lifetimes, resource replenishment, capacity/doors, shared human stepping, objective events and adaptive population caps.
 
-The current engine still performs linear neighbor/entity scans and pairwise crowd separation. Benchmark before introducing Source B's spatial hash, GPU work, workers or more decision systems. Priorities are long-running no-stuck/no-penetration tests over both maps, narrow gate/escort cases, target removal during channel/flight, stable formation heading, and separate accounting for simulated departures versus arrests. Military constraints are game rules for fictional practice scenarios, not claims about real-world procedures.
+Bots do not perform sophisticated tactical planning, and the current coarse grid does not guarantee liveness on arbitrary future custom maps. Indoor bots use a short rest/exit behavior rather than general furniture navigation. Long-running server endurance and multi-client results should be taken from executed integration reports, not inferred from these rules descriptions.

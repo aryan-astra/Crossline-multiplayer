@@ -1,5 +1,15 @@
 import { MAPS, collideBuildings } from "./maps";
-import { nextWaypoint } from "./navigation";
+import {
+  emitEvent,
+  initializeWorldRules,
+  updateWorldRules,
+  markWanted,
+  validDetention,
+  insidePosition,
+  interactionClear,
+  enterBuilding,
+} from "./world-rules";
+import { nextWaypoint, hasLineOfSight } from "./navigation";
 import { formationSlot, rallyTarget } from "./ai";
 import type {
   Entity,
@@ -162,6 +172,10 @@ function makeEntity(
   name: string,
 ): Entity {
   return {
+    hunger: 100,
+    thirst: 100,
+    wanted: 0,
+    wantedUntil: 0,
     id: w.nextId++,
     kind,
     faction,
@@ -264,9 +278,14 @@ export function createWorld(
   wallet: number,
   careerDetentions: number,
   seed = 1,
+  options: { persistent?: boolean } = {},
 ): World {
   const map = structuredClone(MAPS[mapId]);
   const w: World = {
+    persistent: options.persistent ?? false,
+    tick: 0,
+    eventSeq: 0,
+    events: [],
     rngState: seed >>> 0,
     feedSeq: 0,
     map,
@@ -399,6 +418,7 @@ export function createWorld(
   );
   for (const e of w.entities)
     Object.assign(e, collideBuildings(map, e.x, e.y, 9));
+  if (w.persistent) initializeWorldRules(w);
   return w;
 }
 
@@ -422,6 +442,8 @@ function moveTo(
   const nx = e.x + (dx / d) * step,
     ny = e.y + (dy / d) * step;
   const p = collideBuildings(w.map, nx, ny, 9);
+  e.moving = Math.hypot(p.x - e.x, p.y - e.y) > 0.01;
+  e.running = e.moving && speed > e.speed;
   e.x = p.x;
   e.y = p.y;
   return Math.hypot(tx - e.x, ty - e.y) < 12;
@@ -457,6 +479,7 @@ function nearest(
     if (
       o.id === e.id ||
       o.remove ||
+      o.buildingId !== e.buildingId ||
       o.state === "down" ||
       o.state === "detained" ||
       o.kind === "truck" ||
@@ -477,11 +500,41 @@ function nearest(
 function detain(w: World, cop: Entity, target: Entity) {
   if (
     target.remove ||
+    cop.remove ||
+    cop.state === "down" ||
+    cop.state === "detained" ||
+    !interactionClear(w, cop, target) ||
+    dist(cop, target) > 52 ||
     target.state === "down" ||
     target.state === "detained" ||
     target.detainedBy != null
   )
     return;
+  if (w.persistent && !validDetention(w, target)) {
+    emitEvent(w, "unjustified_detention", {
+      actorId: cop.id,
+      targetId: target.id,
+      amount: -10,
+    });
+    target.detainProgress = 0;
+    target.detainOfficer = null;
+    return;
+  }
+  if (w.persistent) {
+    target.custodyUntil = w.time + 20;
+    if (target.buildingId) {
+      const doorway = w.map.buildings.find(
+        (b) => b.id === target.buildingId,
+      )?.entrance;
+      if (doorway) Object.assign(target, doorway);
+      target.buildingId = undefined;
+    }
+    emitEvent(w, "detention", {
+      actorId: cop.id,
+      targetId: target.id,
+      amount: 10,
+    });
+  }
   target.detainProgress = 0;
   target.stateT = 0;
   target.state = "detained";
@@ -498,7 +551,7 @@ function detain(w: World, cop: Entity, target: Entity) {
     w.stats.playerDetentions++;
     w.careerDetentions++;
     w.earned += 40;
-    w.player!.rank = rankFor(w.careerDetentions);
+    if (!w.persistent) cop.rank = rankFor(w.careerDetentions);
     feed(
       w,
       `You detained ${target.name}. +40₿ · Career: ${w.careerDetentions}${w.careerDetentions === MILITARY_UNLOCK ? " — MILITARY UNLOCKED!" : ""}`,
@@ -512,6 +565,7 @@ function detain(w: World, cop: Entity, target: Entity) {
 }
 
 function throwStone(w: World, e: Entity, tx: number, ty: number) {
+  if (w.persistent) markWanted(w, e);
   e.violentT = 8;
   e.recentThrowT = 3;
   e.everViolent = true;
@@ -601,6 +655,9 @@ function fireBullet(
 
 export function roeValid(w: World, shooter: Entity, t: Entity): boolean {
   return (
+    (!w.persistent || (t.imminentThreatUntil ?? 0) > w.time) &&
+    shooter.buildingId === t.buildingId &&
+    (!w.persistent || hasLineOfSight(w.map, shooter, t)) &&
     w.tension > 55 &&
     !t.remove &&
     t.warnedT > 0 &&
@@ -631,7 +688,7 @@ function deployGas(w: World, e: Entity, tx: number, ty: number) {
   say(e, "Tear gas out!");
 }
 
-function spawnTruck(w: World, faction: "protester" | "police") {
+export function spawnSupply(w: World, faction: "protester" | "police") {
   if (
     w.entities.filter((e) => e.kind === "truck" || e.kind === "crate").length >=
     20
@@ -682,10 +739,37 @@ function updateProtester(w: World, e: Entity, dt: number) {
     e.stateT = 2.5 + random(w) * 2;
   }
   if (e.state === "flee") {
+    if (w.persistent) {
+      const shelter = w.map.buildings.find(
+        (b) => b.entrance && b.id && dist(e, b.entrance) < 36,
+      );
+      if (shelter?.id && enterBuilding(w, e, shelter.id)) {
+        e.think = 10;
+        return;
+      }
+    }
     e.stateT -= dt;
     const s = w.map.spawns.protester;
     moveTo(w, e, s.x + (b.seed % 200) - 100, s.y, e.speed * 1.35, dt);
     if (e.stateT <= 0) e.state = "march";
+    return;
+  }
+  if (
+    w.persistent &&
+    w.objective &&
+    e.brain.discipline > 0.55 &&
+    e.violentT <= 0 &&
+    w.objective.status !== "recovering"
+  ) {
+    moveTo(
+      w,
+      e,
+      w.objective.x - 20 + (e.id % 3) * 20,
+      w.objective.y + (e.id % 2) * 20,
+      e.speed,
+      dt,
+    );
+    e.state = "march";
     return;
   }
   e.think -= dt;
@@ -777,6 +861,7 @@ function updatePolice(w: World, e: Entity, dt: number) {
       t.remove ||
       t.state === "detained" ||
       t.state === "down" ||
+      !interactionClear(w, e, t) ||
       dist(e, t) > 48
     ) {
       e.state = "idle";
@@ -859,7 +944,7 @@ function updatePolice(w: World, e: Entity, dt: number) {
     }
   } else if (e.state === "engage") e.state = "idle";
   // opportunistic detain when tension high
-  if (w.tension > 62) {
+  if (!w.persistent && w.tension > 62) {
     const hot = nearest(
       w,
       e,
@@ -923,6 +1008,18 @@ function updatePolice(w: World, e: Entity, dt: number) {
       );
       return;
     }
+  }
+  if (w.persistent && w.objective && e.rank >= 1) {
+    moveTo(
+      w,
+      e,
+      w.objective.x + ((idx % 3) - 1) * 25,
+      w.objective.y + 40,
+      e.speed * 0.8,
+      dt,
+    );
+    e.state = "patrol";
+    return;
   }
   const lp = w.map.policeLine[idx % w.map.policeLine.length];
   moveTo(w, e, lp.x, lp.y, e.speed * 0.8, dt);
@@ -988,6 +1085,15 @@ function updateCivilian(w: World, e: Entity, dt: number) {
     e.stateT = 3;
   }
   if (e.state === "flee") {
+    if (w.persistent) {
+      const shelter = w.map.buildings.find(
+        (b) => b.entrance && b.id && dist(e, b.entrance) < 36,
+      );
+      if (shelter?.id && enterBuilding(w, e, shelter.id)) {
+        e.think = 10;
+        return;
+      }
+    }
     e.stateT -= dt;
     if (e.target) moveTo(w, e, e.target.x, e.target.y, e.speed * 1.5, dt);
     else {
@@ -1027,13 +1133,23 @@ function updateCivilian(w: World, e: Entity, dt: number) {
 function downEntity(w: World, e: Entity) {
   if (e.state === "down") return;
   e.state = "down";
-  e.stateT = 8;
+  e.stateT = w.persistent ? 30 : 8;
+  if (w.persistent) {
+    e.deathUntil = w.time + 30;
+    emitEvent(w, "death", { targetId: e.id });
+  }
   e.violentT = 0;
   w.tension = clamp(w.tension + 16, 0, 100);
   w.violenceRate += 3;
   feed(w, `🚑 ${e.name} is down. The crowd is furious.`, "bad");
   if (e.isPlayer) {
-    feed(w, "You were taken down. Respawning at your spawn point…", "bad");
+    feed(
+      w,
+      w.persistent
+        ? "You are down. Choose a new role after the 30-second recovery period."
+        : "You were taken down. Respawning at your spawn point…",
+      "bad",
+    );
   }
 }
 
@@ -1076,6 +1192,11 @@ function updateTruck(w: World, e: Entity, dt: number) {
         c.crateFaction = e.truckFaction;
         w.entities.push(c);
       }
+      emitEvent(w, "supply_delivery", {
+        actorId: e.id,
+        faction: e.truckFaction,
+        amount: 4,
+      });
       feed(
         w,
         `📦 ${e.truckFaction === "police" ? "Police" : "Protester"} supplies delivered at the depot — grab a crate!`,
@@ -1106,6 +1227,7 @@ export function doAction(
     p.stun > 0
   )
     return;
+  if (p.buildingId && action !== "primary") return;
   if (p.kind === "protester") {
     if (action === "primary") {
       if (p.cooldown > 0) return;
@@ -1120,6 +1242,7 @@ export function doAction(
       w.morale = clamp(w.morale + 4, 0, 100);
       w.tension = clamp(w.tension + 1, 0, 100);
       w.earned += 2;
+      if (w.persistent) emitEvent(w, "chant", { actorId: p.id, amount: 1 });
       fx(w, "ring", p.x, p.y, 0.8, undefined, "#ffb14d");
     } else if (action === "secondary") {
       if (p.stones > 0 && p.cooldown <= 0) {
@@ -1147,7 +1270,9 @@ export function doAction(
           o.kind === "protester" &&
           o.state !== "down" &&
           o.state !== "detained" &&
-          (o.violentT > 0 || (w.tension > 60 && o.brain.aggression > 0.65)),
+          (w.persistent
+            ? true
+            : o.violentT > 0 || (w.tension > 60 && o.brain.aggression > 0.65)),
         44,
       );
       if (t) {
@@ -1304,7 +1429,7 @@ export function fund(
   }
   w.wallet -= amount;
   w.stats.funded += amount;
-  spawnTruck(w, faction);
+  spawnSupply(w, faction);
   if (faction === "protester") w.morale = clamp(w.morale + amount / 40, 0, 100);
 }
 
@@ -1412,14 +1537,41 @@ function marketTick(w: World) {
 }
 
 /* ---------------- main update ---------------- */
-export function update(w: World, dt: number, input: InputState) {
-  if (w.over || !Number.isFinite(dt) || dt <= 0) return;
-  dt = Math.min(dt, 0.05);
-  w.time += dt;
-  w.violenceRate = Math.max(0, w.violenceRate - dt * 0.35);
+export function spawnPlayer(
+  w: World,
+  role: Role,
+  name: string,
+  identity: string,
+): Entity | null {
+  if (role === "watcher") return null;
+  const existing = w.entities.find(
+    (e) => e.profileId === identity && !e.remove,
+  );
+  if (existing) return existing;
+  const point = w.map.spawns[role];
+  const player = makeEntity(w, role, role, point.x, point.y, name);
+  Object.assign(player, collideBuildings(w.map, player.x, player.y, 9));
+  player.remote = true;
+  player.isPlayer = true;
+  player.profileId = identity;
+  player.speed = 110;
+  player.sign = role === "protester";
+  w.entities.push(player);
+  return player;
+}
 
-  // player control
-  const p = w.player;
+export function updatePlayer(
+  w: World,
+  p: Entity,
+  input: InputState,
+  dt: number,
+) {
+  if (!Number.isFinite(dt) || dt <= 0 || !w.entities.includes(p)) return;
+  dt = Math.min(dt, 0.05);
+  const oldX = p.x,
+    oldY = p.y;
+  p.moving = false;
+  p.running = false;
   if (p && !p.remove && p.state !== "down" && p.state !== "detained") {
     if (p.stun <= 0) {
       let dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -1437,14 +1589,14 @@ export function update(w: World, dt: number, input: InputState) {
         const l = Math.hypot(dx, dy);
         dx /= l;
         dy /= l;
-        const sp = p.speed * (input.sprint ? 1.5 : 1);
+        const sp =
+          p.speed *
+          (input.sprint ? 1.5 : 1) *
+          (w.persistent && Math.min(p.hunger, p.thirst) < 30 ? 0.8 : 1);
         p.dir = Math.atan2(dy, dx);
-        const np = collideBuildings(
-          w.map,
-          p.x + dx * sp * dt,
-          p.y + dy * sp * dt,
-          9,
-        );
+        const np = p.buildingId
+          ? insidePosition(w, p, p.x + dx * sp * dt, p.y + dy * sp * dt)
+          : collideBuildings(w.map, p.x + dx * sp * dt, p.y + dy * sp * dt, 9);
         p.x = np.x;
         p.y = np.y;
       }
@@ -1456,6 +1608,7 @@ export function update(w: World, dt: number, input: InputState) {
           t.remove ||
           t.state === "detained" ||
           t.state === "down" ||
+          !interactionClear(w, p, t) ||
           dist(p, t) > 52
         ) {
           p.state = "idle";
@@ -1474,6 +1627,20 @@ export function update(w: World, dt: number, input: InputState) {
       }
     }
   }
+
+  p.moving = Math.hypot(p.x - oldX, p.y - oldY) > 0.01;
+  p.running = p.moving && input.sprint;
+}
+
+export function update(w: World, dt: number, input: InputState) {
+  if (w.over || !Number.isFinite(dt) || dt <= 0) return;
+  dt = Math.min(dt, 0.05);
+  w.time += dt;
+  w.tick++;
+  w.violenceRate = Math.max(0, w.violenceRate - dt * 0.35);
+
+  const p = w.player;
+  if (p && !p.remote) updatePlayer(w, p, input, dt);
 
   // watcher camera
   if (w.role === "watcher") {
@@ -1498,6 +1665,7 @@ export function update(w: World, dt: number, input: InputState) {
         o.id === e.detainOfficer &&
         o.actingOn === e.id &&
         o.stun <= 0 &&
+        interactionClear(w, o, e) &&
         dist(o, e) <= 48,
     );
     if (!holder) {
@@ -1508,6 +1676,11 @@ export function update(w: World, dt: number, input: InputState) {
   // timers per entity
   for (const e of w.entities) {
     if (e.remove) continue;
+    if (!e.isPlayer) {
+      e.moving = false;
+      e.running = false;
+    }
+    if (e.hp <= 0 && e.state !== "down") downEntity(w, e);
     e.cooldown = Math.max(0, e.cooldown - dt);
     e.violentT = Math.max(0, e.violentT - dt);
     e.recentThrowT = Math.max(0, e.recentThrowT - dt);
@@ -1520,7 +1693,8 @@ export function update(w: World, dt: number, input: InputState) {
       continue;
     }
     if (e.state === "down") {
-      e.stateT -= dt;
+      e.stateT = Math.max(0, e.stateT - dt);
+      if (w.persistent && e.isPlayer) continue;
       if (e.stateT <= 0) {
         if (e.isPlayer) {
           const s = w.map.spawns[e.faction as "protester"];
@@ -1529,6 +1703,21 @@ export function update(w: World, dt: number, input: InputState) {
           e.hp = e.maxHp;
           e.state = "idle";
         } else e.remove = true;
+      }
+      continue;
+    }
+    if (e.state === "detained" && w.persistent) {
+      e.custodyUntil ??= w.time + 20;
+      if (w.time >= e.custodyUntil) {
+        e.state = "idle";
+        e.detainedBy = null;
+        e.detainOfficer = null;
+        e.detainProgress = 0;
+        e.wanted = 0;
+        e.violentT = 0;
+        e.recentThrowT = 0;
+        e.custodyUntil = undefined;
+        emitEvent(w, "release", { targetId: e.id });
       }
       continue;
     }
@@ -1567,7 +1756,21 @@ export function update(w: World, dt: number, input: InputState) {
       }
       continue;
     }
-    if (e.remote) continue;
+    if (e.remote || e.buildingId) continue;
+    if (
+      w.persistent &&
+      (e.hunger < 45 || e.thirst < 45) &&
+      e.kind !== "truck" &&
+      e.kind !== "crate"
+    ) {
+      const resource = w.resources
+        ?.filter((r) => r.food > 0 || r.water > 0)
+        .sort((a, b) => dist(a, e) - dist(b, e))[0];
+      if (resource) {
+        moveTo(w, e, resource.x, resource.y, e.speed, dt);
+        continue;
+      }
+    }
     switch (e.kind) {
       case "protester":
         updateProtester(w, e, dt);
@@ -1598,7 +1801,7 @@ export function update(w: World, dt: number, input: InputState) {
           if (e.crateFaction === "protester") {
             const roll = random(w);
             if (roll < 0.5) {
-              taker.stones += 3;
+              taker.stones = Math.min(12, taker.stones + 3);
               if (taker.isPlayer)
                 feed(
                   w,
@@ -1620,7 +1823,7 @@ export function update(w: World, dt: number, input: InputState) {
           } else {
             const roll = random(w);
             if (roll < 0.5) {
-              taker.gas += 1;
+              taker.gas = Math.min(3, taker.gas + 1);
               if (taker.isPlayer)
                 feed(
                   w,
@@ -1648,6 +1851,7 @@ export function update(w: World, dt: number, input: InputState) {
     for (const e of w.entities) {
       if (
         !e.remove &&
+        !e.buildingId &&
         e.state !== "down" &&
         (e.kind === "protester" || e.kind === "civilian") &&
         dist(e, g) < g.r &&
@@ -1664,6 +1868,7 @@ export function update(w: World, dt: number, input: InputState) {
   const solids = w.entities.filter(
     (e) =>
       !e.remove &&
+      !e.buildingId &&
       e.kind !== "truck" &&
       e.kind !== "crate" &&
       e.state !== "down",
@@ -1707,6 +1912,9 @@ export function update(w: World, dt: number, input: InputState) {
         const hit = w.entities.find(
           (o) =>
             !o.remove &&
+            !o.buildingId &&
+            o.state !== "down" &&
+            o.state !== "detained" &&
             o.kind !== "crate" &&
             o.kind !== "truck" &&
             dist(o, { x: pr.tx, y: pr.ty }) < 22,
@@ -1719,6 +1927,10 @@ export function update(w: World, dt: number, input: InputState) {
             hit.kind === "civilian")
         ) {
           hit.hp -= hit.shield ? 6 : 14;
+          if (w.persistent && hit.hp <= 25) {
+            const attacker = w.entities.find((e) => e.id === pr.from);
+            if (attacker) attacker.imminentThreatUntil = w.time + 2;
+          }
           fx(
             w,
             "text",
@@ -1759,7 +1971,13 @@ export function update(w: World, dt: number, input: InputState) {
         if (damaged) w.violenceRate += 0.5;
       } else if (pr.kind === "bullet") {
         const t = w.entities.find((o) => o.id === pr.targetId);
-        if (t && !t.remove && t.state !== "down" && t.state !== "detained") {
+        if (
+          t &&
+          !t.remove &&
+          !t.buildingId &&
+          t.state !== "down" &&
+          t.state !== "detained"
+        ) {
           t.hp -= 55;
           t.stun = 1.5;
           fx(w, "text", t.x, t.y - 18, 1, "-55", "#ff5d5d");
@@ -1807,6 +2025,12 @@ export function update(w: World, dt: number, input: InputState) {
 
   w.entities = w.entities.filter((e) => !e.remove);
 
+  if (w.persistent) {
+    updateWorldRules(w, dt);
+    replenishPopulation(w);
+    return;
+  }
+
   // end conditions
   const activeProtesters = w.entities.filter(
     (e) =>
@@ -1843,4 +2067,38 @@ function endRound(w: World, reason: string) {
   }
   w.earned = Math.max(0, Math.round(w.earned));
   feed(w, `ROUND OVER — ${reason}`, "info");
+}
+
+function replenishPopulation(w: World) {
+  if (w.time < (w.populationAt ?? 0)) return;
+  w.populationAt = w.time + 5;
+  const humans = w.entities.filter((e) => e.isPlayer && !e.remove).length;
+  const targets = {
+    protester: Math.max(12, 30 - humans),
+    police: Math.max(6, 12 - Math.floor(humans / 2)),
+    military: 2,
+    civilian: 8,
+  } as const;
+  for (const kind of ["protester", "police", "military", "civilian"] as const) {
+    const bots = w.entities.filter(
+      (e) => !e.isPlayer && !e.remove && e.kind === kind,
+    );
+    if (bots.length > targets[kind] + 2) {
+      bots[bots.length - 1].remove = true;
+      continue;
+    }
+    if (bots.length >= targets[kind]) continue;
+    const point = w.map.spawns[kind];
+    const e = makeEntity(
+      w,
+      kind,
+      kind,
+      point.x,
+      point.y,
+      NAMES[w.map.id][Math.floor(random(w) * NAMES[w.map.id].length)],
+    );
+    Object.assign(e, collideBuildings(w.map, e.x, e.y, 9));
+    e.journalist = kind === "civilian" && bots.length < 2;
+    w.entities.push(e);
+  }
 }

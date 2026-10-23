@@ -164,3 +164,5 @@ export function nextWaypoint(
     e.path.shift();
   return e.path[0] ?? target;
 }
+
+export const hasLineOfSight = clear;
