@@ -9,5 +9,5 @@
     "outDir": ".test-build",
     "rootDir": "."
   },
-  "include": ["src/game/**/*.ts", "tests/**/*.test.ts"]
+  "include": ["src/game/**/*.ts", "tests/**/*.ts"]
 }

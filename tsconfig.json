@@ -33,6 +33,7 @@
   "exclude": [
     "node_modules",
     ".test-build",
+    ".server-build",
     "multiplayer-role-based-simulation-game",
     "multiplayer-role-based-simulation-game (1)"
   ]
