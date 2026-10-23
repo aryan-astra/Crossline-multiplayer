@@ -182,6 +182,25 @@ test("detention has one owner, cancels progress and counts outcome once", () => 
   assert.equal(w.detentions, 1);
 });
 
+test("police actions honor the selected target and never switch to another suspect", () => {
+  const w = createWorld("delhi", "police", "Officer", "officer", 500, 0);
+  const player = w.player!;
+  const [violent, peaceful] = w.entities.filter(
+    (entity) => entity.kind === "protester",
+  );
+  assert.ok(violent && peaceful);
+  w.entities = [player, violent, peaceful];
+  Object.assign(player, { x: 500, y: 500 });
+  Object.assign(violent, { x: 510, y: 500, violentT: 4 });
+  Object.assign(peaceful, { x: 515, y: 500, violentT: 0 });
+
+  doAction(w, "primary", peaceful.id);
+  assert.notEqual(player.actingOn, violent.id);
+
+  doAction(w, "primary", violent.id);
+  assert.equal(player.actingOn, violent.id);
+});
+
 test("spawn and crowd separation preserve solid geometry", () => {
   for (const map of ["delhi", "paris"] as const) {
     const w = createWorld(map, "watcher", "Tester", "local", 500, 0, 9);

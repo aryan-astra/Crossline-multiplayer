@@ -472,7 +472,23 @@ function nearest(
   e: Entity,
   pred: (o: Entity) => boolean,
   maxD = Infinity,
+  targetId?: number,
 ): Entity | null {
+  if (targetId !== undefined) {
+    const target = w.entities.find((o) => o.id === targetId);
+    return target &&
+      target.id !== e.id &&
+      !target.remove &&
+      target.buildingId === e.buildingId &&
+      target.state !== "down" &&
+      target.state !== "detained" &&
+      target.kind !== "truck" &&
+      target.kind !== "crate" &&
+      pred(target) &&
+      dist(e, target) <= maxD
+      ? target
+      : null;
+  }
   let best: Entity | null = null,
     bd = maxD;
   for (const o of w.entities) {
@@ -1216,6 +1232,7 @@ export function playerRank(w: World): number {
 export function doAction(
   w: World,
   action: "primary" | "secondary" | "special",
+  targetId?: number,
 ) {
   const p = w.player;
   if (
@@ -1271,9 +1288,10 @@ export function doAction(
           o.state !== "down" &&
           o.state !== "detained" &&
           (w.persistent
-            ? true
+            ? validDetention(w, o)
             : o.violentT > 0 || (w.tension > 60 && o.brain.aggression > 0.65)),
         44,
+        targetId,
       );
       if (t) {
         p.state = "detain";
@@ -1294,6 +1312,7 @@ export function doAction(
           o.state !== "down" &&
           o.state !== "detained",
         50,
+        targetId,
       );
       if (t) {
         p.cooldown = 1.2;
@@ -1317,7 +1336,7 @@ export function doAction(
     }
   } else if (p.kind === "military") {
     if (action === "primary" && p.cooldown <= 0) {
-      const t = nearest(w, p, (o) => roeValid(w, p, o), 240);
+      const t = nearest(w, p, (o) => roeValid(w, p, o), 240, targetId);
       if (!t) {
         feed(w, "No target in range (240).", "info");
         return;

@@ -104,6 +104,34 @@ test("funding creates one bounded delivery, debits once and blocks market manipu
   }
 });
 
+test("world interactions report server-validated results to the shared feed", () => {
+  const { store, service, id } = setup();
+  try {
+    service.join(id, "delhi", "protester");
+    const w = service.worlds.delhi;
+    const player = w.entities.find((e) => e.profileId === id)!;
+    const resource = w.resources![0];
+    Object.assign(player, {
+      x: resource.x,
+      y: resource.y,
+      hunger: 40,
+      thirst: 40,
+    });
+    service.command(id, command({ type: "action", action: "interact" }));
+    assert.ok(player.hunger > 40 && player.thirst > 40);
+    assert.match(w.feed[0].text, /collected essentials/);
+
+    player.hunger = 100;
+    player.thirst = 100;
+    Object.assign(player, { x: w.objective!.x, y: w.objective!.y });
+    service.command(id, command({ type: "action", action: "interact" }));
+    assert.ok((player.objectiveUntil ?? 0) > w.time);
+    assert.match(w.feed[0].text, /joined the Constitution Book objective/);
+  } finally {
+    store.close();
+  }
+});
+
 test("prediction capture and payouts settle once; unrelated cycles cannot manufacture wins", () => {
   const { store, service, id } = setup();
   try {

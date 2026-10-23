@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   createWorld,
   doAction,
+  feed,
   issueOrder,
   spawnPlayer,
   spawnSupply,
@@ -395,18 +396,44 @@ export class GameService {
       if (message.type === "order") issueOrder(w, message.x, message.y, "move");
       else if (message.type === "action") {
         if (message.action === "interact") {
-          if (!collectResource(w, e)) interactObjective(w, e);
-        } else if (message.action === "exit") exitBuilding(w, e);
-        else if (message.action === "enter") {
+          if (collectResource(w, e))
+            feed(
+              w,
+              e.name + " collected essentials; food and water restored.",
+              "good",
+            );
+          else if (interactObjective(w, e))
+            feed(
+              w,
+              e.name +
+                " joined the Constitution Book objective. Stay nearby to contribute.",
+              "good",
+            );
+          else
+            feed(
+              w,
+              "Nothing to use here. Reach a supply point or the Constitution Book as a protester.",
+            );
+        } else if (message.action === "exit") {
+          if (exitBuilding(w, e))
+            feed(w, e.name + " left the building.", "good");
+          else feed(w, "Move to the marked interior exit before leaving.");
+        } else if (message.action === "enter") {
           const building = w.map.buildings
-            .filter((b) => b.entrance && b.id)
+            .filter((b) => b.entrance && b.interior && b.id)
             .sort(
               (a, b) =>
                 Math.hypot(a.entrance!.x - e.x, a.entrance!.y - e.y) -
                 Math.hypot(b.entrance!.x - e.x, b.entrance!.y - e.y),
             )[0];
-          if (building?.id) enterBuilding(w, e, building.id);
-        } else doAction(w, message.action);
+          if (building?.id && enterBuilding(w, e, building.id))
+            feed(
+              w,
+              e.name + " entered " + (building.name ?? "the building") + ".",
+              "good",
+            );
+          else feed(w, "Move to a marked open doorway to enter.");
+        } else doAction(w, message.action, message.targetId);
       }
     } finally {
       w.player = null;

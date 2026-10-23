@@ -163,7 +163,7 @@ test("peaceful traits and wanted designation alone authorize neither custody nor
   assert.equal(p.state, "idle");
   assert.equal(
     w.events.filter((e) => e.type === "unjustified_detention").length,
-    1,
+    0,
   );
   const soldier = spawnPlayer(w, "military", "M", "M")!;
   Object.assign(soldier, { x: 500, y: 500 });
