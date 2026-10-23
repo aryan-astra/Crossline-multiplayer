@@ -1,5 +1,7 @@
 # Source comparison and integration audit
 
+Historical prototype audit: the recommendations below describe the original integration decision. The current persistent multiplayer implementation is documented in IMPLEMENTATION_AUDIT.md, ARCHITECTURE.md and VALIDATION.md. FAULTLINE is now the provisional game title; the repository retains its Crossline name.
+
 Inspected 2026-10-22. Source A is `multiplayer-role-based-simulation-game` (STREETS / Crowd Command); Source B is `multiplayer-role-based-simulation-game (1)` (FLASHPOINT / Rally Lines). Crossline is the destination name; FAULTLINE was the supplied initialization brief's working name.
 
 The original directories were audited read-only. **Verified** here means the behavior follows inspected code, not that original applications were executed successfully. No original dependency install, database run, production build, browser smoke test or performance benchmark was performed during these source audits. Root integration tests are separate evidence. Package metadata and marketing descriptions were not treated as proof of functionality. Original source files remain available for line references below.

@@ -1,0 +1,7 @@
+# Storage
+
+Node24.20 built-in DatabaseSync opens DATA_FILE (default data/crossline.sqlite). STRICT schema version1 uses profiles, ledger, operations, holdings, bets, worlds and meta tables. WAL, foreign keys and synchronous FULL are explicit. Startup quick_check and unsupported-schema rejection prevent silently overwriting unknown/corrupt data. Statements use bound parameters. Nested synchronous transactions use savepoints; failures rollback.
+
+Profiles store hashed guest tokens, career/currency and private character state. Worlds store JSON-safe seeded simulation snapshots. Ledger keys prevent repeated rewards/debits, operation receipts persist command fingerprints/results, and bets store frozen terms plus server-observed resolution. Query helpers bound recent prediction/ledger retrieval instead of loading all historical bets per snapshot.
+
+Periodic checkpoints save world progress; critical monetary transactions save world state in the same transaction. Graceful shutdown checkpoints. Time does not advance while powered off. Hard kills can lose movement since the last checkpoint; they must not duplicate committed rewards. One process owns a database/world pair. Back up with SQLite backup tooling or stop cleanly before copying the database and any WAL files; never commit runtime data. Migration beyond version1, disaster recovery automation and account recovery remain future operational work.

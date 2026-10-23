@@ -1,54 +1,11 @@
-# Crossline networking
+# Networking
 
-## Current implementation
+The custom Node server owns two location simulations at 30 fixed steps/second. Browser input is sent at 20Hz and snapshots at10Hz; browsers never advance independent public worlds. One active socket per guest identity prevents duplicate bodies; use separate browser profiles/private windows for multiple players.
 
-The integrated application is local practice. It has no multiplayer transport, room service, authentication, API routes, database, or persistent player profile. Opening two browser sessions creates two independent worlds. Bots, detention results, prices, bets, supplies, and round outcomes are not synchronized.
+GET /api/session creates/resumes a guest; POST changes its name. Cryptographically random tokens are stored hashed and sent in HttpOnly SameSite=Strict cookies. Origin checks protect writes/upgrades. GET /api/health and /api/leaderboards expose public data. /socket uses version1, monotonic per-connection sequence numbers and bounded request IDs. Inputs/actions are validated; stale sequences, role bypasses and overdrafts fail. Economic receipt fingerprints survive reconnect/restart and reject changed payloads under reused keys.
 
-The source prototypes contain presence/synchronization code, but that transport does not establish shared simulation authority. It is excluded from the integrated runtime. No sequence validation, authenticated room membership, authoritative transaction ledger, or replay-safe reward settlement should be inferred from the local engine.
+Transport bounds payload size, message rate and outbound buffering, checks heartbeat liveness, expires input after half a simulation second, and saves/removes disconnected characters after a grace period. Reconnect restores identity without a fresh wallet or duplicate body. Settings stop local input, not public time.
 
-## Planned authority
+Active roles receive nearby entities; spectators receive a full location for observation. Snapshots include authoritative bots, objective, deliveries and outcomes. Interpolation is visual only. JSON still repeats map metadata: delta compression/static-map handshake are future measured optimizations. Host bandwidth/CPU bound scale; unlimited concurrency is not claimed.
 
-The recommended next milestone is one authoritative simulation owner per room. It runs the same headless rules used in tests; browsers send intentions such as movement input or an interaction request. Clients interpolate snapshots and may predict their own movement. The authority validates every consequential action.
-
-| Server authority: planned                    | Browser-local presentation             |
-| -------------------------------------------- | -------------------------------------- |
-| Server-issued identity and permissions       | Camera and viewport                    |
-| Room membership and accepted input           | Input sampling and prediction          |
-| Movement/collision validation                | Animation and interpolation            |
-| Arrest, combat, and match outcomes           | Particles, audio, minimap presentation |
-| Progression and unlocks                      | HUD layout and graphics preferences    |
-| Virtual balances, bets, settlement, supplies | Cached assets and cosmetic preferences |
-
-These boundaries are a design, not implemented server functionality.
-
-## Planned protocol requirements
-
-Before exposing public matches:
-
-1. Bind a server-issued session to authenticated room membership. A browser-supplied player ID cannot select another player's identity.
-2. Version all messages. Reject unknown message types, oversized payloads, non-finite coordinates, invalid enums, and out-of-range values. Rate-limit input and enforce room/player limits.
-3. Include a monotonic input sequence per session and an explicit server tick. Reject stale/replayed inputs under a defined replay window; acknowledgements let clients discard accepted prediction history. Reconnects establish a new or explicitly resumed session epoch.
-4. Accept action requests, never arbitrary wallet deltas, career increments, target HP, positions, or claimed match winners. Check role, range, cooldown, target lifetime, collision, and available resources on the server.
-5. Publish authoritative snapshots with acknowledgements. Reconcile predictions against those snapshots. A local correction must never create a reward.
-6. Persist final match identifiers and unique settlement keys. Apply debits, credits, and settlement records atomically so retries cannot issue duplicate payouts. Sequence numbers alone do not provide durable financial idempotency.
-7. Define disconnect, timeout, checkpoint, restart, room completion, and reconnect policies before relying on process memory.
-
-Only virtual practice money exists in the baseline. No real-money wagering is planned.
-
-## Transport alternatives
-
-| Approach                                   | Tradeoff                                                                                                           | Direction                                         |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| Authoritative WebSocket server             | Simple ownership, continuous compute, deployment/monitoring responsibility                                         | Reference implementation for the next milestone   |
-| Lightweight server with browser simulation | Cheap only when consequential actions remain independently verifiable; diverging simulations complicate validation | Limit browsers to prediction and presentation     |
-| Cloudflare Durable Object per room         | Managed coordination and storage; single-threaded room and active-duration costs                                   | Benchmark as a host after rules and protocol work |
-| WebRTC peer/host simulation                | Requires signaling and ICE/TURN support; player-controlled authority can cheat or disconnect                       | Defer competitive use                             |
-| Hybrid server rules plus local visuals     | Preserves trusted outcomes while offloading presentation                                                           | Recommended model                                 |
-
-WebRTC does not supply its own signaling service, and TURN can relay traffic when direct paths fail. [Official WebRTC connection guide](https://webrtc.org/getting-started/peer-connections). Browser transport security is not proof of honest gameplay. [W3C WebRTC Recommendation](https://www.w3.org/TR/webrtc/).
-
-Durable Objects coordinate multiple WebSocket clients, and hibernation can retain connections while resetting object memory. [Official WebSocket documentation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/). This does not implement a game's authentication, validation, snapshots, persistence, or recovery.
-
-## Multiplayer acceptance gate
-
-Use two isolated browser sessions against one room and prove they observe the same server-owned detention and match result. Test packet replay, malformed input, impossible movement, duplicate interactions, late joining, disconnect/reconnect, and server restart. Test economic retries concurrently against durable storage. Measure server tick p95, bandwidth, message rate, and capacity before making cost or population claims. These multiplayer checks are pending because the integrated baseline has no room server.
+Guest cookies are bearer identities. Clearing cookies creates another guest; no verified-human identity, account recovery, anti-Sybil system or public-internet abuse guarantee exists. Run exactly one host process against the world database. HTTPS and proxy/origin hardening are required before public deployment. Tests exercise real two-socket replication and persistence; see VALIDATION.md for browser evidence.
