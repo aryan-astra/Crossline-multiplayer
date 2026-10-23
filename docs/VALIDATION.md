@@ -4,7 +4,7 @@
 
 ## Automated checks
 
-- npm run validate passed after the gameplay/UI pass: Prettier, ESLint, TypeScript, **68 tests passed, zero failed/skipped**, production server compilation and Next16.4.2 build. Test duration5.65s; Next production build and static generation succeeded.
+- `npm run validate` passes after the dispatch/reward pass: Prettier, ESLint, TypeScript, **72 tests passed, zero failed/skipped**, production server compilation and Next16.4.2 build. The deterministic 300-second twin-world scenario and Next production static generation succeeded.
 - Real HTTP/WebSocket integration tests cover two identities, replicated movement/bots/objective, stale sequence rejection, reconnect/tab replacement, foreign origins, malformed/oversized/forged commands, rate limits and autonomous ticking.
 - Store/service tests cover restart, token hashing, transaction rollback, duplicate receipts/payouts, overdraft/short rejection, supply debit/delivery, role exposure restrictions, military top-five/expiry, death/respawn, custody recovery and event reward replay.
 - Deterministic simulation tests cover fixed steps, full seeded rounds, collision/navigation, objective capture/contesting/recovery, interiors/capacity, resources, wanted/threat constraints and bounded populations. Camera/client/render tests cover role zoom, interpolation boundaries, lifecycle cleanup, terminal replacement close, LAN request IDs and renderer purity.
@@ -18,7 +18,9 @@ Keyboard movement changed the protester x830 to903.3333333333326, y1420. The spe
 
 In the latest browser run, the retained homepage hero and location/role art loaded. The revised, wider camera showed more city geometry and fewer wanted labels. Chanting through the HUD increased server-owned credits71→72 and score2→3. At390×844, the HUD started collapsed, touch movement and action controls were visible, the chant button also changed credits and score, and document width matched the viewport with no horizontal overflow. Browser console had no warnings or errors.
 
-After graceful stop/restart, the actual SQLite world/account readback retained the same identities, balances70/33, lifeId1, calm holding1, protester position903.3333333333326/1420 and objective cycle4; the restarted world continued ticking. Final browser auto-reconnect after this restart was not re-inspected.
+The dispatch/reward build was also run as an isolated production server at127.0.0.1:3002 using a temporary SQLite file. A police guest received a server-issued wanted target outside ordinary interest range; “Highlight on map” selected it, and the minimap marker followed it. After a clean server restart, the same build reconnected and correctly showed the no-active-dispatch state. No browser console warnings or errors appeared. Headless tests additionally verify assignment handoff, bot fallback, peaceful-target pursuit, command priority, cross-map isolation, objective payouts and no replay after restart.
+
+After an earlier graceful stop/restart, the SQLite world/account readback retained the same identities, balances70/33, lifeId1, calm holding1, protester position903.3333333333326/1420 and objective cycle4; the restarted world continued ticking. That earlier browser auto-reconnect was not re-inspected; the later isolated preview reload and rejoin were.
 
 ## Measurements
 
@@ -37,4 +39,4 @@ Desktop HUD reported2.0ms render work for47 visible entities at1158×649 in this
 
 ## Limits and remaining checks
 
-No real Android device, internet deployment, cloud free-tier soak, public authentication/anti-Sybil defense, calibrated betting odds, full equipment life-budget economy, full command hierarchy, rich licensed audio library or exhaustive long-running economy balance test was completed. Thirty simulated minutes is not a day-long operational soak. Headless scenarios do not certify supported client counts. Existing promotional image provenance is documented in ART_DIRECTION.md; no new image generation was used for this phase. Remote CI execution is separate from locally passing validation.
+No real Android device, internet deployment, cloud free-tier soak, public authentication/anti-Sybil defense, calibrated betting odds, full equipment life-budget economy, full command hierarchy, rich licensed audio library or exhaustive long-running economy balance test was completed. Thirty simulated minutes is not a day-long operational soak. Headless scenarios do not certify supported client counts. Existing promotional image provenance is documented in ART_DIRECTION.md; no new image generation was used for this phase. Remote CI execution is separate from locally passing validation. The existing port3000 server was an older running process; current code is available in the isolated preview on port3002.
