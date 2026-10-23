@@ -22,6 +22,27 @@ function recordingContext(labels: string[]): CanvasRenderingContext2D {
   ) as CanvasRenderingContext2D;
 }
 
+test("overlapping crowd speech stays readable without changing agent state", () => {
+  const w = createWorld("paris", "watcher", "Observer", "test", 69, 0);
+  w.camX = 1000;
+  w.camY = 700;
+  w.zoom = 1;
+  w.entities = w.entities.slice(0, 8).map((entity, i) => ({
+    ...entity,
+    x: 1000 + i,
+    y: 700 + i,
+    bubble: `Crowd voice ${i}`,
+  }));
+  const before = JSON.stringify(w);
+  const labels: string[] = [];
+  drawFrame(recordingContext(labels), w, 800, 600, {} as HTMLCanvasElement);
+  assert.equal(
+    labels.filter((text) => text.startsWith("Crowd voice")).length,
+    1,
+  );
+  assert.equal(JSON.stringify(w), before);
+});
+
 test("rendering cannot advance or mutate detention or match state", () => {
   const w = createWorld("delhi", "police", "Test", "test", 1000, 0);
   w.entities[0].detainProgress = 0.6;

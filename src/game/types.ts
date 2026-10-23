@@ -22,6 +22,15 @@ export interface Building extends Rect {
   id?: string;
   entrance?: { x: number; y: number };
   interior?: { w: number; h: number; capacity: number; obstacles: Rect[] };
+  footprint?: { x: number; y: number }[];
+  tags?: Record<string, string>;
+}
+
+export interface RoadWay {
+  id: string;
+  name?: string;
+  highway?: string;
+  line: { x: number; y: number }[];
 }
 
 export interface MapDef {
@@ -35,6 +44,10 @@ export interface MapDef {
   trees: { x: number; y: number; r: number }[];
   lamps: { x: number; y: number }[];
   roads: Rect[];
+  roadWays?: RoadWay[];
+  bounds?: { west: number; south: number; east: number; north: number };
+  cropRect?: Rect;
+  objectivePoint?: { x: number; y: number };
   lawns: Rect[];
   labels: { x: number; y: number; text: string; size?: number }[];
   rallyPoints: { x: number; y: number }[];

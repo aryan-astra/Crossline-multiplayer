@@ -13,8 +13,10 @@ import {
   collectResource,
   enterBuilding,
   exitBuilding,
+  initializeWorldRules,
   interactObjective,
 } from "../game/world-rules";
+import { MAPS, collideBuildings } from "../game/maps";
 import type { Entity, InputState, MapId, Role, World } from "../game/types";
 import {
   parseMessage,
@@ -65,6 +67,41 @@ export class GameService {
             index + 41,
             { persistent: true },
           );
+        if (!w.map.roadWays) {
+          // Upgrade legacy geometry without resetting identities, balances or event receipts.
+          w.map = structuredClone(MAPS[id]);
+          if (w.objective) Object.assign(w.objective, w.map.objectivePoint);
+          for (const entity of w.entities) {
+            entity.buildingId = undefined;
+            entity.path = undefined;
+            entity.pathTarget = undefined;
+            entity.target = null;
+            entity.order = null;
+            if (entity.kind === "truck" && entity.truckFaction) {
+              entity.truckPath = w.map.truckRoutes[entity.truckFaction];
+              entity.truckIdx = 0;
+              Object.assign(entity, entity.truckPath[0]);
+            } else if (entity.state === "detained") {
+              Object.assign(entity, w.map.detainZone);
+            } else {
+              Object.assign(
+                entity,
+                collideBuildings(w.map, entity.x, entity.y, 9),
+              );
+            }
+          }
+          for (const resource of w.resources ?? []) {
+            const faction = resource.id.startsWith("police")
+              ? "police"
+              : "protester";
+            Object.assign(resource, w.map.depots[faction]);
+          }
+          w.projectiles = [];
+          w.effects = [];
+          w.gases = [];
+          w.order = null;
+          initializeWorldRules(w);
+        }
         w.player = null;
         w.role = "watcher";
         for (const e of w.entities.filter((e) => e.profileId))

@@ -51,8 +51,8 @@ export function initializeWorldRules(w: World) {
   w.eventSeq ??= 0;
   w.tick ??= 0;
   w.objective ??= {
-    x: w.map.id === "delhi" ? 1180 : 1350,
-    y: w.map.id === "delhi" ? 850 : 780,
+    x: w.map.objectivePoint?.x ?? (w.map.id === "delhi" ? 1180 : 1350),
+    y: w.map.objectivePoint?.y ?? (w.map.id === "delhi" ? 850 : 780),
     status: "protected",
     progress: 0,
     phaseT: 0,

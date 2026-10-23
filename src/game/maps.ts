@@ -1,396 +1,431 @@
-import type { Building, MapDef } from "./types";
+import delhiData from "./geography/delhi.json";
+import parisData from "./geography/paris.json";
+import type { Building, MapDef, RoadWay } from "./types";
 
-const B = (
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  kind: Building["kind"],
-  extra: Partial<Building> = {},
-): Building => ({
-  x,
-  y,
-  w,
-  h,
-  kind,
-  hp: kind === "shop" ? 100 : 400,
-  maxHp: kind === "shop" ? 100 : 400,
-  ...extra,
-});
-
-/* ================= DELHI — JANTAR MANTAR ================= */
-function delhi(): MapDef {
-  const buildings: Building[] = [
-    // perimeter walls of the observatory complex (gates: south x760-900, east y620-740)
-    B(240, 210, 1260, 16, "wall"),
-    B(240, 210, 16, 1140, "wall"),
-    B(240, 1334, 520, 16, "wall"),
-    B(900, 1334, 600, 16, "wall"),
-    B(1484, 210, 16, 410, "wall"),
-    B(1484, 740, 16, 610, "wall"),
-    // ticket office
-    B(280, 250, 130, 80, "block", {
-      name: "Ticket Office",
-      color: "#c96f4a",
-      roof: "#a85536",
-    }),
-    // SAMRAT YANTRA — great triangular sundial, N-S gnomon with staircase
-    B(770, 380, 130, 380, "monument", {
-      monument: "samrat",
-      name: "Samrat Yantra",
-    }),
-    // MISRA YANTRA — cross-shaped composite instrument
-    B(380, 420, 200, 200, "monument", {
-      monument: "misra",
-      name: "Misra Yantra",
-    }),
-    // JAI PRAKASH YANTRA — twin sunken hemispherical bowls
-    B(1040, 480, 200, 200, "monument", {
-      monument: "jaiprakash1",
-      name: "Jai Prakash Yantra",
-    }),
-    B(1260, 480, 190, 190, "monument", { monument: "jaiprakash2" }),
-    // RAM YANTRA — twin open cylindrical structures
-    B(400, 800, 180, 180, "monument", { monument: "ram1", name: "Ram Yantra" }),
-    B(630, 800, 180, 180, "monument", { monument: "ram2" }),
-    // small yantras south of Samrat
-    B(950, 760, 90, 60, "monument", {
-      monument: "small",
-      name: "Dakshinottara",
-    }),
-    B(1090, 760, 70, 70, "monument", { monument: "small" }),
-    // east side — Sansad Marg shops (Connaught-style white colonnades)
-    B(1620, 260, 170, 130, "shop", { name: "Chai Point", awning: "#b3402e" }),
-    B(1620, 420, 170, 130, "shop", {
-      name: "Khadi Bhandar",
-      awning: "#2e6b4f",
-    }),
-    B(1620, 580, 170, 130, "shop", {
-      name: "Camera Repair",
-      awning: "#31589c",
-    }),
-    B(1620, 740, 170, 130, "shop", {
-      name: "Delhi Book House",
-      awning: "#8a5a2b",
-    }),
-    B(1620, 900, 170, 130, "shop", {
-      name: "Halwai Sweets",
-      awning: "#b3862e",
-    }),
-    B(1620, 1060, 170, 130, "shop", {
-      name: "Mobile Plaza",
-      awning: "#5a3d8a",
-    }),
-    // far east city blocks
-    B(1900, 240, 260, 300, "block", {
-      color: "#d8cfc0",
-      roof: "#bfb4a1",
-      name: "Statesman House",
-    }),
-    B(1900, 600, 260, 300, "block", { color: "#cfc4b2", roof: "#b5a992" }),
-    B(1900, 960, 260, 320, "block", { color: "#d8cfc0", roof: "#bfb4a1" }),
-    // west across Sansad Marg
-    B(-80, 300, 180, 340, "block", { color: "#cbb9a4", roof: "#b09e88" }),
-    B(-80, 720, 180, 340, "block", { color: "#cbb9a4", roof: "#b09e88" }),
-    // police detain compound (van + tent drawn by renderer)
-  ];
-  const trees = [];
-  for (let i = 0; i < 9; i++) trees.push({ x: 300 + i * 135, y: 1290, r: 22 });
-  for (let i = 0; i < 7; i++) trees.push({ x: 205, y: 260 + i * 160, r: 20 });
-  for (let i = 0; i < 8; i++) trees.push({ x: 1555, y: 260 + i * 150, r: 18 });
-  trees.push(
-    { x: 960, y: 960, r: 26 },
-    { x: 1180, y: 1000, r: 24 },
-    { x: 560, y: 680, r: 22 },
-    { x: 1330, y: 320, r: 24 },
-  );
-  return {
-    id: "delhi",
-    name: "Mantar Jantar",
-    country: "Fictional city inspired by Delhi",
-    w: 2200,
-    h: 1500,
-    ambience: "delhi",
-    buildings,
-    trees,
-    lamps: [
-      { x: 200, y: 400 },
-      { x: 200, y: 800 },
-      { x: 200, y: 1200 },
-      { x: 1560, y: 400 },
-      { x: 1560, y: 800 },
-      { x: 1560, y: 1200 },
-    ],
-    roads: [
-      { x: 100, y: 0, w: 110, h: 1500 }, // Sansad Marg
-      { x: 1500, y: 0, w: 100, h: 1500 }, // service lane
-      { x: 0, y: 0, w: 2200, h: 130 }, // Parliament St top
-      { x: 0, y: 1400, w: 2200, h: 100 },
-    ],
-    lawns: [
-      { x: 280, y: 260, w: 420, h: 130 },
-      { x: 940, y: 880, w: 480, h: 200 },
-      { x: 300, y: 1020, w: 900, h: 230 }, // protest garden
-    ],
-    labels: [
-      { x: 155, y: 750, text: "SANSAD MARG", size: 15 },
-      { x: 870, y: 180, text: "JANTAR MANTAR · OBSERVATORY (1724)", size: 17 },
-      { x: 850, y: 1180, text: "DESIGNATED PROTEST SITE", size: 14 },
-      { x: 1440, y: 1260, text: "DETAIN ZONE", size: 12 },
-    ],
-    rallyPoints: [
-      { x: 620, y: 1150 },
-      { x: 850, y: 1120 },
-      { x: 1080, y: 1160 },
-      { x: 850, y: 1230 },
-    ],
-    policeLine: [
-      { x: 1300, y: 940 },
-      { x: 1350, y: 1000 },
-      { x: 1390, y: 1060 },
-      { x: 1410, y: 1120 },
-      { x: 1410, y: 1180 },
-      { x: 1390, y: 1240 },
-    ],
-    checkpoints: [
-      { x: 830, y: 1380 },
-      { x: 1540, y: 680 },
-      { x: 870, y: 300 },
-    ],
-    spawns: {
-      protester: { x: 830, y: 1420 },
-      police: { x: 1450, y: 1180 },
-      military: { x: 1540, y: 700 },
-      civilian: { x: 1550, y: 500 },
-    },
-    detainZone: { x: 1440, y: 1280 },
-    depots: { protester: { x: 340, y: 1240 }, police: { x: 1420, y: 1200 } },
-    truckRoutes: {
-      protester: [
-        { x: -60, y: 60 },
-        { x: 155, y: 60 },
-        { x: 155, y: 1440 },
-        { x: 830, y: 1440 },
-        { x: 830, y: 1280 },
-        { x: 340, y: 1280 },
-        { x: 340, y: 1240 },
-      ],
-      police: [
-        { x: 2260, y: 60 },
-        { x: 1550, y: 60 },
-        { x: 1550, y: 680 },
-        { x: 1420, y: 680 },
-        { x: 1420, y: 1200 },
-      ],
-    },
+type OSMExport = {
+  location: string;
+  bounds: { west: number; south: number; east: number; north: number };
+  projection: {
+    center: { lon: number; lat: number };
+    metersPerWorldUnit: number;
   };
+  buildings: { id: string; tags: Record<string, string>; ring: number[][] }[];
+  roads: { id: string; tags: Record<string, string>; line: number[][] }[];
+};
+type Point = { x: number; y: number };
+
+function clipRing(
+  ring: Point[],
+  rect: { x: number; y: number; w: number; h: number },
+): Point[] {
+  let points = ring.slice(0, -1);
+  const edges: [(p: Point) => boolean, (a: Point, b: Point) => Point][] = [
+    [
+      (p: Point) => p.x >= rect.x,
+      (a: Point, b: Point) => ({
+        x: rect.x,
+        y: a.y + ((b.y - a.y) * (rect.x - a.x)) / (b.x - a.x),
+      }),
+    ],
+    [
+      (p: Point) => p.x <= rect.x + rect.w,
+      (a: Point, b: Point) => ({
+        x: rect.x + rect.w,
+        y: a.y + ((b.y - a.y) * (rect.x + rect.w - a.x)) / (b.x - a.x),
+      }),
+    ],
+    [
+      (p: Point) => p.y >= rect.y,
+      (a: Point, b: Point) => ({
+        y: rect.y,
+        x: a.x + ((b.x - a.x) * (rect.y - a.y)) / (b.y - a.y),
+      }),
+    ],
+    [
+      (p: Point) => p.y <= rect.y + rect.h,
+      (a: Point, b: Point) => ({
+        y: rect.y + rect.h,
+        x: a.x + ((b.x - a.x) * (rect.y + rect.h - a.y)) / (b.y - a.y),
+      }),
+    ],
+  ] as const;
+  for (const [inside, intersect] of edges) {
+    const input = points;
+    points = [];
+    for (let i = 0; i < input.length; i++) {
+      const a = input[i],
+        b = input[(i + 1) % input.length],
+        aIn = inside(a),
+        bIn = inside(b);
+      if (aIn && bIn) points.push(b);
+      else if (aIn && !bIn) points.push(intersect(a, b));
+      else if (!aIn && bIn) points.push(intersect(a, b), b);
+    }
+  }
+  if (points.length < 3) return [];
+  points.push(points[0]);
+  return points;
 }
 
-/* ================= PARIS — PLACE DE LA RÉPUBLIQUE ================= */
-function paris(): MapDef {
-  const buildings: Building[] = [];
-  // Haussmann blocks — north side
-  const north = [40, 340, 640, 940, 1240, 1540, 1840];
-  north.forEach((x, i) =>
-    buildings.push(
-      B(x, 20, 260, 300, "block", {
-        color: i % 2 ? "#ded4c2" : "#d6cab5",
-        roof: "#6d7480",
-        name: i === 3 ? "Hôtel Moderne" : undefined,
-      }),
-    ),
+function clipLine(
+  line: Point[],
+  rect: { x: number; y: number; w: number; h: number },
+): Point[][] {
+  const chunks: Point[][] = [];
+  let current: Point[] = [];
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1],
+      b = line[i],
+      dx = b.x - a.x,
+      dy = b.y - a.y;
+    let lo = 0,
+      hi = 1;
+    for (const [p, q] of [
+      [-dx, a.x - rect.x],
+      [dx, rect.x + rect.w - a.x],
+      [-dy, a.y - rect.y],
+      [dy, rect.y + rect.h - a.y],
+    ] as [number, number][]) {
+      if (!p && q < 0) {
+        lo = 2;
+        break;
+      }
+      if (p) {
+        const t = q / p;
+        if (p < 0) lo = Math.max(lo, t);
+        else hi = Math.min(hi, t);
+      }
+    }
+    if (lo > hi || lo > 1 || hi < 0) {
+      if (current.length > 1) chunks.push(current);
+      current = [];
+      continue;
+    }
+    const start = { x: a.x + dx * lo, y: a.y + dy * lo },
+      end = { x: a.x + dx * hi, y: a.y + dy * hi };
+    if (
+      !current.length ||
+      Math.hypot(current.at(-1)!.x - start.x, current.at(-1)!.y - start.y) >
+        0.01
+    ) {
+      if (current.length > 1) chunks.push(current);
+      current = [start];
+    }
+    current.push(end);
+  }
+  if (current.length > 1) chunks.push(current);
+  return chunks;
+}
+
+function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
+  const point = (p: number[]): Point => ({ x: p[0], y: p[1] });
+  const scale = 1 / data.projection.metersPerWorldUnit;
+  const { lon, lat } = data.projection.center;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const cropRect = {
+    x:
+      1100 -
+      ((data.bounds.east - data.bounds.west) * 111320 * cosLat * scale) / 2,
+    y: 750 - ((data.bounds.north - data.bounds.south) * 111320 * scale) / 2,
+    w: (data.bounds.east - data.bounds.west) * 111320 * cosLat * scale,
+    h: (data.bounds.north - data.bounds.south) * 111320 * scale,
+  };
+  const buildings: Building[] = data.buildings.flatMap(
+    ({ id: osmId, tags, ring }) => {
+      const footprint = clipRing(ring.map(point), cropRect);
+      if (footprint.length < 4) return [];
+      const xs = footprint.map((p) => p.x),
+        ys = footprint.map((p) => p.y);
+      const shop = Boolean(
+        tags.shop ||
+          ["cafe", "restaurant", "fast_food", "bar"].some(
+            (key) => tags.amenity === key,
+          ),
+      );
+      const monument = tags.name === "Samrat Yantra" ? "samrat" : undefined;
+      return [
+        {
+          id: `osm-way-${osmId}`,
+          name: tags.name,
+          kind: monument ? "monument" : shop ? "shop" : "block",
+          monument,
+          x: Math.min(...xs),
+          y: Math.min(...ys),
+          w: Math.max(...xs) - Math.min(...xs),
+          h: Math.max(...ys) - Math.min(...ys),
+          footprint,
+          hp: shop ? 100 : 400,
+          maxHp: shop ? 100 : 400,
+        },
+      ];
+    },
   );
-  // south side with shops facing the plaza
-  buildings.push(
-    B(40, 1200, 260, 280, "block", { color: "#ded4c2", roof: "#6d7480" }),
-  );
-  buildings.push(
-    B(340, 1200, 220, 150, "shop", {
-      name: "Café République",
-      awning: "#9c2f2f",
-    }),
-  );
-  buildings.push(
-    B(600, 1200, 220, 150, "shop", {
-      name: "Brasserie du Peuple",
-      awning: "#1f5c40",
-    }),
-  );
-  buildings.push(
-    B(860, 1200, 220, 150, "shop", {
-      name: "Librairie Voltaire",
-      awning: "#31589c",
-    }),
-  );
-  buildings.push(
-    B(1120, 1200, 220, 150, "shop", {
-      name: "Pâtisserie Marianne",
-      awning: "#b3862e",
-    }),
-  );
-  buildings.push(
-    B(1380, 1200, 220, 150, "shop", { name: "Métro Shop", awning: "#5a3d8a" }),
-  );
-  buildings.push(
-    B(1640, 1200, 260, 280, "block", { color: "#ded4c2", roof: "#6d7480" }),
-  );
-  buildings.push(
-    B(1940, 1200, 220, 280, "block", { color: "#d6cab5", roof: "#6d7480" }),
-  );
-  buildings.push(
-    B(340, 1380, 1260, 100, "block", { color: "#cfc4ae", roof: "#767d89" }),
-  );
-  // west blocks
-  buildings.push(
-    B(20, 420, 280, 300, "block", { color: "#d6cab5", roof: "#6d7480" }),
-  );
-  buildings.push(
-    B(20, 780, 280, 320, "block", { color: "#ded4c2", roof: "#6d7480" }),
-  );
-  // east blocks (gap y700-800 = police entry street)
-  buildings.push(
-    B(1900, 420, 280, 260, "block", { color: "#ded4c2", roof: "#6d7480" }),
-  );
-  buildings.push(
-    B(1900, 820, 280, 280, "block", { color: "#d6cab5", roof: "#6d7480" }),
-  );
-  // Monument à la République pedestal
-  buildings.push(
-    B(950, 620, 150, 150, "monument", {
-      monument: "republique",
-      name: "Monument à la République",
-    }),
-  );
-  return {
-    id: "paris",
-    name: "Paris / Republica Plaza",
-    country: "Fictional city inspired by Paris",
+  const roadWays: RoadWay[] = data.roads
+    .filter(({ tags }) =>
+      [
+        "primary",
+        "secondary",
+        "tertiary",
+        "residential",
+        "living_street",
+        "pedestrian",
+        "unclassified",
+      ].includes(tags.highway),
+    )
+    .flatMap(({ id: osmId, tags, line }) =>
+      clipLine(line.map(point), cropRect).map((line, i) => ({
+        id: `osm-way-${osmId}-${i}`,
+        name: tags.name,
+        highway: tags.highway,
+        line,
+      })),
+    );
+  const map: MapDef = {
+    id,
+    name:
+      id === "delhi"
+        ? "Jantar Mantar, New Delhi"
+        : "Place de la République, Paris",
+    country: id === "delhi" ? "India" : "France",
     w: 2200,
     h: 1500,
-    ambience: "paris",
+    ambience: id,
     buildings,
-    trees: [
-      ...Array.from({ length: 10 }, (_, i) => ({
-        x: 380 + i * 160,
-        y: 385,
-        r: 19,
-      })),
-      ...Array.from({ length: 10 }, (_, i) => ({
-        x: 380 + i * 160,
-        y: 1130,
-        r: 19,
-      })),
-      { x: 360, y: 500, r: 20 },
-      { x: 360, y: 650, r: 20 },
-      { x: 360, y: 800, r: 20 },
-      { x: 360, y: 950, r: 20 },
-      { x: 1840, y: 500, r: 20 },
-      { x: 1840, y: 650, r: 20 },
-      { x: 1840, y: 900, r: 20 },
-      { x: 1840, y: 1040, r: 20 },
-    ],
-    lamps: [
-      { x: 500, y: 470 },
-      { x: 900, y: 470 },
-      { x: 1300, y: 470 },
-      { x: 1700, y: 470 },
-      { x: 500, y: 1050 },
-      { x: 900, y: 1050 },
-      { x: 1300, y: 1050 },
-      { x: 1700, y: 1050 },
-      { x: 950, y: 750 },
-      { x: 1150, y: 750 },
-    ],
-    roads: [
-      { x: 0, y: 330, w: 2200, h: 90 }, // Bd Saint-Martin / Voltaire axis
-      { x: 0, y: 1110, w: 2200, h: 80 },
-      { x: 310, y: 330, w: 90, h: 870 },
-      { x: 1800, y: 330, w: 90, h: 870 },
-      { x: 2180, y: 690, w: 20, h: 130 },
-      { x: 1800, y: 700, w: 400, h: 110 }, // east entry street
-    ],
+    trees: [],
+    lamps: [],
+    roads: [],
+    roadWays,
     lawns: [],
-    labels: [
-      { x: 1100, y: 375, text: "BOULEVARD SAINT-MARTIN", size: 15 },
-      { x: 1100, y: 1150, text: "RUE DU FAUBOURG DU TEMPLE", size: 13 },
-      { x: 1050, y: 560, text: "PLACE DE LA RÉPUBLIQUE", size: 18 },
-      { x: 2020, y: 1150, text: "DETAIN ZONE", size: 12 },
-    ],
-    rallyPoints: [
-      { x: 640, y: 720 },
-      { x: 700, y: 900 },
-      { x: 560, y: 820 },
-      { x: 780, y: 780 },
-    ],
-    policeLine: [
-      { x: 1450, y: 540 },
-      { x: 1480, y: 620 },
-      { x: 1500, y: 700 },
-      { x: 1500, y: 780 },
-      { x: 1480, y: 860 },
-      { x: 1450, y: 940 },
-    ],
-    checkpoints: [
-      { x: 1850, y: 755 },
-      { x: 420, y: 400 },
-      { x: 1700, y: 1100 },
-    ],
+    labels: [],
+    rallyPoints: [],
+    policeLine: [],
+    checkpoints: [],
     spawns: {
-      protester: { x: 480, y: 760 },
-      police: { x: 2050, y: 755 },
-      military: { x: 1850, y: 740 },
-      civilian: { x: 1200, y: 1080 },
+      protester: { x: 0, y: 0 },
+      police: { x: 0, y: 0 },
+      military: { x: 0, y: 0 },
+      civilian: { x: 0, y: 0 },
     },
-    detainZone: { x: 2020, y: 1130 },
-    depots: { protester: { x: 250, y: 1130 }, police: { x: 1845, y: 1000 } },
-    truckRoutes: {
-      protester: [
-        { x: -60, y: 375 },
-        { x: 355, y: 375 },
-        { x: 355, y: 1150 },
-        { x: 250, y: 1150 },
-        { x: 250, y: 1130 },
-      ],
-      police: [
-        { x: 2260, y: 755 },
-        { x: 1845, y: 755 },
-        { x: 1845, y: 1000 },
-      ],
-    },
+    detainZone: { x: 0, y: 0 },
+    depots: { protester: { x: 0, y: 0 }, police: { x: 0, y: 0 } },
+    truckRoutes: { protester: [], police: [] },
+    bounds: data.bounds,
+    cropRect,
+    objectivePoint: { x: 0, y: 0 },
   };
+  const projectGeo = (latitude: number, longitude: number): Point => ({
+    x: 1100 + (longitude - lon) * 111320 * cosLat * scale,
+    y: 750 - (latitude - lat) * 111320 * scale,
+  });
+  const landmark =
+    id === "delhi" ? projectGeo(28.6271, 77.2166) : projectGeo(48.8675, 2.3638);
+  const open = (target: Point): Point => {
+    for (let radius = 0; radius <= 280; radius += 12) {
+      for (let n = -radius; n <= radius; n += 12)
+        for (const [dx, dy] of [
+          [n, -radius],
+          [n, radius],
+          [-radius, n],
+          [radius, n],
+        ]) {
+          const p = { x: target.x + dx, y: target.y + dy };
+          const clear = collideBuildings(map, p.x, p.y, 9);
+          if (clear.x === p.x && clear.y === p.y) return p;
+        }
+    }
+    return collideBuildings(map, target.x, target.y, 9);
+  };
+  map.objectivePoint = open(landmark);
+  const at = (dx: number, dy: number) =>
+    open({ x: landmark.x + dx, y: landmark.y + dy });
+  map.rallyPoints = [at(-80, 0), at(-35, 45), at(35, -35), at(80, 30)];
+  map.policeLine = [
+    at(260, -120),
+    at(280, -60),
+    at(300, 0),
+    at(300, 60),
+    at(280, 120),
+    at(260, 180),
+  ];
+  map.checkpoints = [at(-420, 0), at(420, -180), at(0, 360)];
+  map.spawns = {
+    protester: at(-180, 0),
+    police: at(220, 0),
+    military: at(310, 70),
+    civilian: at(0, -260),
+  };
+  map.detainZone = at(430, 260);
+  const getRoad = (name: string): Point[] => {
+    const candidates = roadWays
+      .filter((way) => way.name === name)
+      .sort((a, b) => b.line.length - a.line.length);
+    const line = candidates[0]?.line ?? [];
+    return line
+      .map((p) => open(p))
+      .filter(
+        (p, i, points) =>
+          i === 0 ||
+          Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y) > 18,
+      );
+  };
+  const routeA = getRoad(
+    id === "delhi" ? "Jantar Mantar Road" : "Rue du Temple",
+  );
+  const routeB = getRoad(id === "delhi" ? "Sansad Marg" : "Boulevard Voltaire");
+  map.truckRoutes = {
+    protester: routeA.length > 1 ? routeA : [at(-500, 0), ...map.rallyPoints],
+    police:
+      routeB.length > 1 ? routeB : [at(500, 0), ...map.policeLine.slice(0, 3)],
+  };
+  map.depots = {
+    protester: map.truckRoutes.protester.at(-1) ?? at(-80, 0),
+    police: map.truckRoutes.police.at(-1) ?? at(80, 0),
+  };
+  map.labels = [
+    {
+      x: landmark.x,
+      y: landmark.y - 100,
+      text: id === "delhi" ? "JANTAR MANTAR" : "PLACE DE LA RÉPUBLIQUE",
+      size: 18,
+    },
+  ];
+  const labeledRoads = new Set<string>();
+  for (const way of roadWays)
+    if (
+      way.name &&
+      !labeledRoads.has(way.name) &&
+      (way.name.includes("Sansad") ||
+        way.name.includes("Boulevard") ||
+        way.name.includes("Avenue") ||
+        way.name.includes("Janpath"))
+    ) {
+      labeledRoads.add(way.name);
+      const p = way.line[Math.floor(way.line.length / 2)];
+      map.labels.push({
+        x: p.x,
+        y: p.y - 15,
+        text: way.name.toUpperCase(),
+        size: 11,
+      });
+    }
+  for (const shop of buildings.filter((b) => b.kind === "shop").slice(0, 3)) {
+    // Place the public entrance on the nearest navigable edge of the real footprint.
+    const center = { x: shop.x + shop.w / 2, y: shop.y + shop.h / 2 };
+    shop.entrance = open({ x: center.x, y: shop.y + shop.h + 14 });
+  }
+  return map;
 }
 
 export const MAPS: Record<"delhi" | "paris", MapDef> = {
-  delhi: delhi(),
-  paris: paris(),
+  delhi: makeMap("delhi", delhiData as unknown as OSMExport),
+  paris: makeMap("paris", parisData as unknown as OSMExport),
 };
 
-export function collideBuildings(
-  map: MapDef,
+function insidePolygon(x: number, y: number, ring: Point[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i],
+      b = ring[j];
+    if (
+      a.y > y !== b.y > y &&
+      x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+function nearestOnSegment(p: Point, a: Point, b: Point): Point {
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1),
+    ),
+  );
+  return { x: a.x + dx * t, y: a.y + dy * t };
+}
+function collidePolygon(
+  b: Building,
   x: number,
   y: number,
   r: number,
-): { x: number; y: number } {
-  for (const b of map.buildings) {
-    if (
-      b.kind === "wall" ||
-      b.kind === "block" ||
-      b.kind === "shop" ||
-      b.kind === "monument"
-    ) {
-      const nx = Math.max(b.x, Math.min(x, b.x + b.w));
-      const ny = Math.max(b.y, Math.min(y, b.y + b.h));
-      const dx = x - nx;
-      const dy = y - ny;
-      const d2 = dx * dx + dy * dy;
+): Point | undefined {
+  const ring = b.footprint;
+  if (!ring?.length) return;
+  const inside = insidePolygon(x, y, ring);
+  let edgePoint: Point | undefined,
+    edgeIndex = 0,
+    distance2 = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const p = nearestOnSegment({ x, y }, ring[i], ring[(i + 1) % ring.length]);
+    const d2 = (p.x - x) ** 2 + (p.y - y) ** 2;
+    if (d2 < distance2) {
+      distance2 = d2;
+      edgePoint = p;
+      edgeIndex = i;
+    }
+  }
+  if (!edgePoint || (!inside && distance2 >= r * r)) return;
+  let dx = x - edgePoint.x,
+    dy = y - edgePoint.y,
+    distance = Math.hypot(dx, dy);
+  if (inside || distance < 1e-6) {
+    const a = ring[edgeIndex],
+      b = ring[(edgeIndex + 1) % ring.length];
+    const nx = -(b.y - a.y),
+      ny = b.x - a.x,
+      length = Math.hypot(nx, ny) || 1;
+    const one = {
+      x: edgePoint.x + (nx / length) * 0.1,
+      y: edgePoint.y + (ny / length) * 0.1,
+    };
+    const sign = insidePolygon(one.x, one.y, ring) ? -1 : 1;
+    dx = (nx / length) * sign;
+    dy = (ny / length) * sign;
+    distance = 0;
+  } else {
+    dx /= distance;
+    dy /= distance;
+  }
+  return { x: edgePoint.x + dx * (r + 0.01), y: edgePoint.y + dy * (r + 0.01) };
+}
+
+function resolveBuildings(map: MapDef, x: number, y: number, r: number): Point {
+  for (let pass = 0; pass < 12; pass++) {
+    const startX = x,
+      startY = y;
+    for (const b of map.buildings) {
+      if (
+        b.kind !== "wall" &&
+        b.kind !== "block" &&
+        b.kind !== "shop" &&
+        b.kind !== "monument"
+      )
+        continue;
+      if (x + r < b.x || x - r > b.x + b.w || y + r < b.y || y - r > b.y + b.h)
+        continue;
+      if (b.footprint) {
+        const p = collidePolygon(b, x, y, r);
+        if (p) {
+          x = p.x;
+          y = p.y;
+        }
+        continue;
+      }
+      const nx = Math.max(b.x, Math.min(x, b.x + b.w)),
+        ny = Math.max(b.y, Math.min(y, b.y + b.h));
+      const dx = x - nx,
+        dy = y - ny,
+        d2 = dx * dx + dy * dy;
       if (d2 < r * r) {
         if (d2 === 0) {
-          // inside: push out along shortest axis
           const l = x - b.x,
             rr = b.x + b.w - x,
             t = y - b.y,
-            bt = b.y + b.h - y;
-          const m = Math.min(l, rr, t, bt);
+            bt = b.y + b.h - y,
+            m = Math.min(l, rr, t, bt);
           if (m === l) x = b.x - r;
           else if (m === rr) x = b.x + b.w + r;
           else if (m === t) y = b.y - r;
@@ -402,8 +437,38 @@ export function collideBuildings(
         }
       }
     }
+    if (Math.hypot(x - startX, y - startY) < 0.01) break;
   }
-  x = Math.max(10, Math.min(map.w - 10, x));
-  y = Math.max(10, Math.min(map.h - 10, y));
-  return { x, y };
+  return {
+    x: Math.max(10, Math.min(map.w - 10, x)),
+    y: Math.max(10, Math.min(map.h - 10, y)),
+  };
+}
+
+export function collideBuildings(
+  map: MapDef,
+  x: number,
+  y: number,
+  r: number,
+): Point {
+  const resolved = resolveBuildings(map, x, y, r);
+  const checked = resolveBuildings(map, resolved.x, resolved.y, r);
+  if (Math.hypot(checked.x - resolved.x, checked.y - resolved.y) < 0.01)
+    return resolved;
+  for (let radius = 6; radius <= 120; radius += 6) {
+    for (let dy = -radius; dy <= radius; dy += 6)
+      for (let dx = -radius; dx <= radius; dx += 6) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const candidate = resolveBuildings(
+          map,
+          resolved.x + dx,
+          resolved.y + dy,
+          r,
+        );
+        const clear = resolveBuildings(map, candidate.x, candidate.y, r);
+        if (Math.hypot(clear.x - candidate.x, clear.y - candidate.y) < 0.01)
+          return candidate;
+      }
+  }
+  return resolved;
 }

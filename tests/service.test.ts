@@ -11,9 +11,40 @@ import {
   markWanted,
 } from "../src/game/world-rules";
 import { createWorld, spawnSupply } from "../src/game/engine";
+import { MAPS } from "../src/game/maps";
 import type { ClientMessage, Command } from "../src/network/protocol";
 
 let sequence = 0;
+
+test("legacy map upgrade preserves profiles and event receipts while moving geometry", () => {
+  const store = new Store(":memory:");
+  try {
+    const service = new GameService(store);
+    const profile = store.createGuest("Returning player").profile;
+    service.join(profile.id, "delhi", "protester");
+    const before = store.profile(profile.id);
+    const w = service.worlds.delhi;
+    w.map.roadWays = undefined;
+    w.map.objectivePoint = undefined;
+    const entity = w.entities.find((item) => item.profileId === profile.id)!;
+    entity.buildingId = "legacy-interior";
+    entity.path = [{ x: 1, y: 1 }];
+    const eventSeq = w.eventSeq;
+    store.saveWorld("delhi", w);
+    const upgraded = new GameService(store).worlds.delhi;
+    assert.ok(upgraded.map.roadWays?.length);
+    assert.deepEqual(store.profile(profile.id), before);
+    assert.equal(upgraded.eventSeq, eventSeq);
+    assert.equal(upgraded.objective?.x, MAPS.delhi.objectivePoint?.x);
+    assert.equal(upgraded.objective?.y, MAPS.delhi.objectivePoint?.y);
+    const restored = upgraded.entities.find((item) => item.id === entity.id)!;
+    assert.equal(restored.buildingId, undefined);
+    assert.equal(restored.path, undefined);
+    assert.equal(restored.profileId, profile.id);
+  } finally {
+    store.close();
+  }
+});
 function command(
   value: Command,
   requestId = `request:${++sequence}`,

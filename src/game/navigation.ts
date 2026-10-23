@@ -4,7 +4,7 @@ import { collideBuildings } from "./maps";
 const CELL = 40;
 const grids = new WeakMap<
   MapDef,
-  { cols: number; rows: number; open: Uint8Array }
+  { cols: number; rows: number; open: Uint8Array; edges: number[][] }
 >();
 
 function clear(
@@ -12,58 +12,89 @@ function clear(
   a: { x: number; y: number },
   b: { x: number; y: number },
 ) {
-  const dx = b.x - a.x,
-    dy = b.y - a.y;
-  const length2 = dx * dx + dy * dy;
-  const minX = Math.min(a.x, b.x),
-    maxX = Math.max(a.x, b.x);
-  const minY = Math.min(a.y, b.y),
-    maxY = Math.max(a.y, b.y);
+  const d2 = (p: { x: number; y: number }, q: { x: number; y: number }) =>
+    (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+  const pointSegment = (
+    p: { x: number; y: number },
+    u: { x: number; y: number },
+    v: { x: number; y: number },
+  ) => {
+    const dx = v.x - u.x,
+      dy = v.y - u.y;
+    const t = Math.max(
+      0,
+      Math.min(
+        1,
+        ((p.x - u.x) * dx + (p.y - u.y) * dy) / (dx * dx + dy * dy || 1),
+      ),
+    );
+    return { x: u.x + dx * t, y: u.y + dy * t };
+  };
+  const orientation = (
+    p: { x: number; y: number },
+    q: { x: number; y: number },
+    r: { x: number; y: number },
+  ) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const onSegment = (
+    p: { x: number; y: number },
+    q: { x: number; y: number },
+    r: { x: number; y: number },
+  ) =>
+    r.x >= Math.min(p.x, q.x) - 1e-8 &&
+    r.x <= Math.max(p.x, q.x) + 1e-8 &&
+    r.y >= Math.min(p.y, q.y) - 1e-8 &&
+    r.y <= Math.max(p.y, q.y) + 1e-8;
+  const segmentDistance2 = (
+    u: { x: number; y: number },
+    v: { x: number; y: number },
+    p: { x: number; y: number },
+    q: { x: number; y: number },
+  ) => {
+    const a1 = orientation(u, v, p),
+      a2 = orientation(u, v, q),
+      b1 = orientation(p, q, u),
+      b2 = orientation(p, q, v);
+    if (
+      (((a1 > 0 && a2 < 0) || (a1 < 0 && a2 > 0)) &&
+        ((b1 > 0 && b2 < 0) || (b1 < 0 && b2 > 0))) ||
+      (Math.abs(a1) < 1e-8 && onSegment(u, v, p)) ||
+      (Math.abs(a2) < 1e-8 && onSegment(u, v, q)) ||
+      (Math.abs(b1) < 1e-8 && onSegment(p, q, u)) ||
+      (Math.abs(b2) < 1e-8 && onSegment(p, q, v))
+    )
+      return 0;
+    return Math.min(
+      d2(u, pointSegment(u, p, q)),
+      d2(v, pointSegment(v, p, q)),
+      d2(p, pointSegment(p, u, v)),
+      d2(q, pointSegment(q, u, v)),
+    );
+  };
+  if (
+    d2(a, collideBuildings(map, a.x, a.y, 9)) > 1e-4 ||
+    d2(b, collideBuildings(map, b.x, b.y, 9)) > 1e-4
+  )
+    return false;
   for (const block of map.buildings) {
     if (
-      maxX < block.x - 9 ||
-      minX > block.x + block.w + 9 ||
-      maxY < block.y - 9 ||
-      minY > block.y + block.h + 9
+      Math.max(a.x, b.x) < block.x - 9 ||
+      Math.min(a.x, b.x) > block.x + block.w + 9 ||
+      Math.max(a.y, b.y) < block.y - 9 ||
+      Math.min(a.y, b.y) > block.y + block.h + 9
     )
       continue;
-    // Swept circle: two side rectangles plus four rounded corners.
-    for (const box of [
-      { x: block.x - 9, y: block.y, w: block.w + 18, h: block.h },
-      { x: block.x, y: block.y - 9, w: block.w, h: block.h + 18 },
-    ]) {
-      let low = 0,
-        high = 1;
-      for (const axis of ["x", "y"] as const) {
-        const min = box[axis],
-          max = min + (axis === "x" ? box.w : box.h);
-        const delta = b[axis] - a[axis];
-        if (Math.abs(delta) < 1e-8) {
-          if (a[axis] <= min || a[axis] >= max) {
-            low = 2;
-            break;
-          }
-        } else {
-          const t1 = (min - a[axis]) / delta,
-            t2 = (max - a[axis]) / delta;
-          low = Math.max(low, Math.min(t1, t2));
-          high = Math.min(high, Math.max(t1, t2));
-        }
-      }
-      if (low < high - 1e-8 && high > 0 && low < 1) return false;
-    }
-    for (const x of [block.x, block.x + block.w])
-      for (const y of [block.y, block.y + block.h]) {
-        const t =
-          length2 === 0
-            ? 0
-            : Math.max(
-                0,
-                Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / length2),
-              );
-        if ((a.x + dx * t - x) ** 2 + (a.y + dy * t - y) ** 2 < 81 - 1e-6)
-          return false;
-      }
+    const ring = block.footprint ?? [
+      { x: block.x, y: block.y },
+      { x: block.x + block.w, y: block.y },
+      { x: block.x + block.w, y: block.y + block.h },
+      { x: block.x, y: block.y + block.h },
+    ];
+    for (let i = 0; i < ring.length; i++)
+      if (
+        segmentDistance2(a, b, ring[i], ring[(i + 1) % ring.length]) <
+        81 - 1e-6
+      )
+        return false;
   }
   return true;
 }
@@ -99,10 +130,27 @@ export function nextWaypoint(
             Math.hypot(point.x - cx, point.y - cy) < 0.001,
         );
       }
-      grid = { cols, rows, open };
+      const edges: number[][] = Array.from({ length: open.length }, () => []);
+      const center = (i: number) => ({
+        x: ((i % cols) + 0.5) * CELL,
+        y: (Math.floor(i / cols) + 0.5) * CELL,
+      });
+      // Geometry stays solid after damage, so sweep each static grid edge once.
+      for (let i = 0; i < open.length; i++) {
+        if (!open[i]) continue;
+        const neighbors = [i + cols];
+        if (i % cols < cols - 1) neighbors.push(i + 1);
+        for (const j of neighbors) {
+          if (j >= open.length || !open[j] || !clear(map, center(i), center(j)))
+            continue;
+          edges[i].push(j);
+          edges[j].push(i);
+        }
+      }
+      grid = { cols, rows, open, edges };
       grids.set(map, grid);
     }
-    const { cols, open } = grid;
+    const { cols, open, edges } = grid;
     const center = (i: number) => ({
       x: ((i % cols) + 0.5) * CELL,
       y: (Math.floor(i / cols) + 0.5) * CELL,
@@ -110,8 +158,9 @@ export function nextWaypoint(
     const candidates: number[] = [];
     for (let i = 0; i < open.length; i++) if (open[i]) candidates.push(i);
     const distance2 = (i: number) => {
-      const p = center(i);
-      return (p.x - e.x) ** 2 + (p.y - e.y) ** 2;
+      const dx = ((i % cols) + 0.5) * CELL - e.x;
+      const dy = (Math.floor(i / cols) + 0.5) * CELL - e.y;
+      return dx * dx + dy * dy;
     };
     candidates.sort((a, b) => distance2(a) - distance2(b));
     const start = candidates.find((i) => clear(map, e, center(i))) ?? -1;
@@ -133,17 +182,8 @@ export function nextWaypoint(
         end = i;
         break;
       }
-      const neighbors = [i - cols, i + cols];
-      if (i % cols > 0) neighbors.push(i - 1);
-      if (i % cols < cols - 1) neighbors.push(i + 1);
-      for (const j of neighbors)
-        if (
-          j >= 0 &&
-          j < open.length &&
-          open[j] &&
-          parents[j] === -1 &&
-          clear(map, p, center(j))
-        ) {
+      for (const j of edges[i])
+        if (parents[j] === -1) {
           parents[j] = i;
           queue.push(j);
         }

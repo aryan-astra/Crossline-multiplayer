@@ -24,68 +24,11 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
   c.width = map.w;
   c.height = map.h;
   const g = c.getContext("2d")!;
-  if (map.ambience === "delhi") {
-    const ground = g.createLinearGradient(0, 0, map.w, map.h);
-    ground.addColorStop(0, "#cdb890");
-    ground.addColorStop(1, "#bba47d");
-    g.fillStyle = ground;
-    g.fillRect(0, 0, map.w, map.h);
-    // paving tiles inside complex
-    g.fillStyle = "#cdb489";
-    g.fillRect(240, 210, 1260, 1140);
-    g.strokeStyle = "rgba(120,95,60,0.18)";
-    g.lineWidth = 1;
-    for (let x = 240; x < 1500; x += 46) {
-      g.beginPath();
-      g.moveTo(x, 210);
-      g.lineTo(x, 1350);
-      g.stroke();
-    }
-    for (let y = 210; y < 1350; y += 46) {
-      g.beginPath();
-      g.moveTo(240, y);
-      g.lineTo(1500, y);
-      g.stroke();
-    }
-    for (const l of map.lawns) {
-      const grass = g.createLinearGradient(l.x, l.y, l.x + l.w, l.y + l.h);
-      grass.addColorStop(0, "#86a55b");
-      grass.addColorStop(1, "#708f4b");
-      g.fillStyle = grass;
-      g.fillRect(l.x, l.y, l.w, l.h);
-      g.strokeStyle = "#5c7a3a";
-      g.lineWidth = 3;
-      g.strokeRect(l.x, l.y, l.w, l.h);
-    }
-  } else {
-    const ground = g.createLinearGradient(0, 0, 0, map.h);
-    ground.addColorStop(0, "#b3afa5");
-    ground.addColorStop(1, "#99968e");
-    g.fillStyle = ground;
-    g.fillRect(0, 0, map.w, map.h);
-    // plaza paving grid
-    g.strokeStyle = "rgba(70,68,62,0.22)";
-    for (let x = 310; x < 1900; x += 42) {
-      g.beginPath();
-      g.moveTo(x, 420);
-      g.lineTo(x, 1110);
-      g.stroke();
-    }
-    for (let y = 420; y < 1110; y += 42) {
-      g.beginPath();
-      g.moveTo(310, y);
-      g.lineTo(1900, y);
-      g.stroke();
-    }
-    // decorative plaza circles around monument
-    g.strokeStyle = "rgba(80,76,68,0.3)";
-    g.lineWidth = 4;
-    for (const r of [140, 200, 260]) {
-      g.beginPath();
-      g.arc(1025, 695, r, 0, Math.PI * 2);
-      g.stroke();
-    }
-  }
+  const ground = g.createLinearGradient(0, 0, 0, map.h);
+  ground.addColorStop(0, map.ambience === "delhi" ? "#c8b58e" : "#b3afa5");
+  ground.addColorStop(1, map.ambience === "delhi" ? "#bba47d" : "#99968e");
+  g.fillStyle = ground;
+  g.fillRect(0, 0, map.w, map.h);
   // roads
   for (const r of map.roads) {
     g.fillStyle = map.ambience === "delhi" ? "#5b5750" : "#4a4d52";
@@ -104,15 +47,33 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
     g.stroke();
     g.setLineDash([]);
   }
-  // crosswalks near spawns
-  g.fillStyle = "rgba(255,255,255,0.5)";
-  const cw =
-    map.ambience === "delhi"
-      ? { x: 100, y: 1395, w: 110, h: 60 }
-      : { x: 310, y: 715, w: 90, h: 80 };
-  for (let i = 0; i < 6; i++) {
-    if (map.ambience === "delhi") g.fillRect(cw.x + 6 + i * 18, cw.y, 10, cw.h);
-    else g.fillRect(cw.x, cw.y + 4 + i * 13, cw.w, 7);
+  for (const road of map.roadWays ?? []) {
+    if (road.line.length < 2) continue;
+    const width =
+      road.highway === "primary" || road.highway === "secondary"
+        ? 30
+        : road.highway === "tertiary" || road.highway === "trunk"
+          ? 22
+          : road.highway === "residential" || road.highway === "unclassified"
+            ? 14
+            : road.highway === "service"
+              ? 9
+              : 5;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.strokeStyle = "#4d4b49";
+    g.lineWidth = width;
+    g.beginPath();
+    g.moveTo(road.line[0].x, road.line[0].y);
+    for (const p of road.line.slice(1)) g.lineTo(p.x, p.y);
+    g.stroke();
+    if (width >= 22) {
+      g.strokeStyle = "rgba(235,224,193,0.48)";
+      g.lineWidth = 2;
+      g.setLineDash([14, 20]);
+      g.stroke();
+      g.setLineDash([]);
+    }
   }
   // labels
   for (const l of map.labels) {
@@ -164,6 +125,60 @@ function drawBuilding(
   map: MapDef,
   time: number,
 ) {
+  if (b.footprint) {
+    const height = b.kind === "shop" ? 20 : map.ambience === "paris" ? 42 : 32;
+    const path = (dy = 0, inset = 0) => {
+      const cx =
+        b.footprint!.reduce((sum, p) => sum + p.x, 0) / b.footprint!.length;
+      const cy =
+        b.footprint!.reduce((sum, p) => sum + p.y, 0) / b.footprint!.length;
+      g.beginPath();
+      b.footprint!.forEach((p, i) => {
+        const x = cx + (p.x - cx) * (1 - inset),
+          y = cy + (p.y - cy) * (1 - inset) + dy;
+        if (i === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      });
+      g.closePath();
+    };
+    g.fillStyle = "rgba(12,18,24,0.25)";
+    path(height * 0.45 + 5);
+    g.fill();
+    g.fillStyle = b.color ?? (map.ambience === "paris" ? "#bcae98" : "#b89270");
+    path();
+    g.fill();
+    g.fillStyle = b.roof ?? (map.ambience === "paris" ? "#6d7480" : "#a78c69");
+    path(-height, 0.08);
+    g.fill();
+    if (b.kind === "monument") {
+      g.save();
+      path(-height, 0.08);
+      g.clip();
+      g.translate(0, -height);
+      drawMonument(g, b, time);
+      g.restore();
+    }
+    if (b.entrance) {
+      g.fillStyle = "#202a2d";
+      g.fillRect(b.entrance.x - 7, b.entrance.y - 9, 14, 12);
+      g.strokeStyle = "#dbcf9a";
+      g.lineWidth = 2;
+      g.strokeRect(b.entrance.x - 7, b.entrance.y - 9, 14, 12);
+      label(g, b.entrance.x, b.entrance.y + 18, "ENTER", "#e4dfce");
+    }
+    if (b.name && b.w > 70 && b.h > 35) {
+      g.font = "600 10px 'Barlow', sans-serif";
+      g.fillStyle = "rgba(35,32,28,0.7)";
+      g.textAlign = "center";
+      g.fillText(
+        b.name,
+        b.x + b.w / 2,
+        b.y + b.h / 2 - height - 3,
+        Math.min(b.w, 150),
+      );
+    }
+    return;
+  }
   if (b.kind === "monument") {
     drawRoof(g, b, map, time);
     return;
@@ -575,6 +590,7 @@ function drawPerson(
   w: World,
   e: Entity,
   time: number,
+  showSpeech = true,
 ) {
   const moving =
     e.moving ??
@@ -858,7 +874,7 @@ function drawPerson(
     }
   }
   // speech bubble
-  if (e.bubble) {
+  if (e.bubble && showSpeech) {
     g.font = "600 11px 'Barlow', sans-serif";
     const tw = g.measureText(e.bubble).width;
     const bx = e.x - tw / 2 - 7,
@@ -1154,6 +1170,7 @@ export function drawFrame(
     drawables.push({ depth: e.y, entity: e });
   }
   drawables.sort((a, b) => a.depth - b.depth);
+  const speech: { x: number; y: number }[] = [];
   for (const item of drawables) {
     if (item.building) {
       drawBuilding(ctx, item.building, w.map, time);
@@ -1162,7 +1179,17 @@ export function drawFrame(
     const e = item.entity!;
     if (e.kind === "crate") drawCrate(ctx, e, time);
     else if (e.kind === "truck") drawTruck(ctx, e, time);
-    else drawPerson(ctx, w, e, time);
+    else {
+      const showSpeech =
+        e.isPlayer ||
+        e.id === w.selectedId ||
+        (speech.length < 4 &&
+          !speech.some(
+            (p) => Math.abs(p.x - e.x) < 150 && Math.abs(p.y - e.y) < 55,
+          ));
+      if (e.bubble && showSpeech) speech.push(e);
+      drawPerson(ctx, w, e, time, showSpeech);
+    }
   }
   for (const resource of w.resources ?? []) {
     if (
@@ -1336,13 +1363,31 @@ export function drawMinimap(
   ctx.fillStyle = w.map.ambience === "delhi" ? "#8a7550" : "#6e6b64";
   ctx.fillRect(0, 0, mw, mh);
   ctx.fillStyle = "rgba(0,0,0,0.35)";
-  for (const b of w.map.buildings)
-    ctx.fillRect(
-      b.x * sx,
-      b.y * sy,
-      Math.max(1.5, b.w * sx),
-      Math.max(1.5, b.h * sy),
+  for (const road of w.map.roadWays ?? []) {
+    if (road.line.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(road.line[0].x * sx, road.line[0].y * sy);
+    for (const p of road.line.slice(1)) ctx.lineTo(p.x * sx, p.y * sy);
+    ctx.strokeStyle = "rgba(70,68,64,0.85)";
+    ctx.lineWidth =
+      road.highway === "primary" || road.highway === "secondary" ? 2 : 1;
+    ctx.stroke();
+  }
+  for (const b of w.map.buildings) {
+    ctx.beginPath();
+    const ring = b.footprint ?? [
+      { x: b.x, y: b.y },
+      { x: b.x + b.w, y: b.y },
+      { x: b.x + b.w, y: b.y + b.h },
+      { x: b.x, y: b.y + b.h },
+    ];
+    ring.forEach((p, i) =>
+      i === 0 ? ctx.moveTo(p.x * sx, p.y * sy) : ctx.lineTo(p.x * sx, p.y * sy),
     );
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fill();
+  }
   for (const e of w.entities) {
     if (e.remove || e.buildingId || e.kind === "crate" || e.kind === "truck")
       continue;
