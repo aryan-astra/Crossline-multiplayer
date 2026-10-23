@@ -70,6 +70,14 @@ export interface Ranking {
   watcherProfit: number;
   appointmentUntil: number;
 }
+export interface PoliceDispatch {
+  targetId: number;
+  name: string;
+  wantedLevel: number;
+  x: number;
+  y: number;
+  inBuilding: boolean;
+}
 export interface Snapshot {
   v: 1;
   type: "snapshot";
@@ -82,6 +90,7 @@ export interface Snapshot {
   rankings: Ranking[];
   online: number;
   appointmentIn: number;
+  policeTask?: PoliceDispatch;
 }
 export type ServerMessage =
   | Snapshot

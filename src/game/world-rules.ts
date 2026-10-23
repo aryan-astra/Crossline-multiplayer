@@ -232,7 +232,10 @@ function finishObjective(w: World, faction: "protester" | "police") {
       ),
     )
     .sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
-  const winner = participants[0];
+  const humanParticipants = participants.filter(([id]) =>
+    w.entities.some((e) => e.id === Number(id) && e.profileId),
+  );
+  const winner = humanParticipants[0];
   emitEvent(
     w,
     faction === "protester" ? "objective_capture" : "objective_defense",
@@ -242,13 +245,21 @@ function finishObjective(w: World, faction: "protester" | "police") {
       details: `cycle:${objective.cycle}`,
     },
   );
-  for (const [id, amount] of participants)
+  for (const [id, amount] of participants) {
     emitEvent(w, "objective_contribution", {
       actorId: Number(id),
       amount: Math.round(amount),
       faction,
       details: `cycle:${objective.cycle}`,
     });
+    if (humanParticipants.some(([humanId]) => humanId === id))
+      emitEvent(w, "objective_team_reward", {
+        actorId: Number(id),
+        amount: 5,
+        faction,
+        details: `cycle:${objective.cycle}`,
+      });
+  }
   objective.status = "recovering";
   objective.recoveryT = objective.recoverySeconds;
   objective.progress = 0;

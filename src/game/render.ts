@@ -1328,6 +1328,7 @@ export function drawMinimap(
   mh: number,
   viewWidth: number,
   viewHeight: number,
+  dispatch?: { x: number; y: number },
 ) {
   const sx = mw / w.map.w,
     sy = mh / w.map.h;
@@ -1365,6 +1366,13 @@ export function drawMinimap(
     ctx.beginPath();
     ctx.arc(e.x * sx, e.y * sy, e.isPlayer ? 3 : 1.7, 0, Math.PI * 2);
     ctx.fill();
+    if (e.id === w.selectedId) {
+      ctx.strokeStyle = "#fff1a8";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(e.x * sx, e.y * sy, 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
   if (w.order && w.order.t > 0) {
     ctx.strokeStyle = "#4da3ff";
@@ -1376,6 +1384,13 @@ export function drawMinimap(
   if (w.objective) {
     ctx.fillStyle = "#eee0aa";
     ctx.fillRect(w.objective.x * sx - 3, w.objective.y * sy - 3, 6, 6);
+  }
+  if (dispatch) {
+    ctx.strokeStyle = "#fff1a8";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(dispatch.x * sx, dispatch.y * sy, 7, 0, Math.PI * 2);
+    ctx.stroke();
   }
   // camera viewport
   ctx.strokeStyle = "rgba(255,255,255,0.6)";

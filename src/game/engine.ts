@@ -927,13 +927,51 @@ function updatePolice(w: World, e: Entity, dt: number) {
     }
   }
   if (w.order && w.order.t <= 0) e.order = null;
-  // engage violent protester nearby
-  const violent = nearest(
-    w,
-    e,
-    (o) => o.kind === "protester" && o.violentT > 0 && o.state !== "detained",
-    140,
+  let assigned = w.entities.find(
+    (o) => o.id === e.policeTaskTargetId && !o.remove,
   );
+  if (
+    !assigned ||
+    assigned.kind !== "protester" ||
+    assigned.wanted <= 0 ||
+    assigned.state === "down" ||
+    assigned.state === "detained"
+  ) {
+    e.policeTaskTargetId = undefined;
+    assigned = undefined;
+  }
+  if (assigned) {
+    e.order = null;
+    if (w.order) e.orderSeen = w.order.id;
+  }
+  if (assigned && assigned.violentT <= 0) {
+    const targetBuilding = assigned.buildingId
+      ? w.map.buildings.find((building) => building.id === assigned.buildingId)
+      : undefined;
+    const point = assigned.buildingId ? targetBuilding?.entrance : assigned;
+    if (!point) e.policeTaskTargetId = undefined;
+    else {
+      const d = dist(e, point);
+      if (d > 72) {
+        e.state = "patrol";
+        moveTo(w, e, point.x, point.y, e.speed, dt);
+      } else {
+        e.state = "idle";
+        e.dir = Math.atan2(point.y - e.y, point.x - e.x);
+      }
+      return;
+    }
+  }
+  // engage violent protester nearby
+  const violent = assigned?.violentT
+    ? assigned
+    : nearest(
+        w,
+        e,
+        (o) =>
+          o.kind === "protester" && o.violentT > 0 && o.state !== "detained",
+        140,
+      );
   if (violent) {
     const d = dist(e, violent);
     if (d < 36 && e.cooldown <= 0) {

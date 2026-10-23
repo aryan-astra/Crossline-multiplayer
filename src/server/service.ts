@@ -19,6 +19,7 @@ import type { Entity, InputState, MapId, Role, World } from "../game/types";
 import {
   parseMessage,
   type ClientMessage,
+  type PoliceDispatch,
   type Prediction,
   type Snapshot,
 } from "../network/protocol";
@@ -34,6 +35,9 @@ const idle: InputState = {
   mouseY: 0,
 };
 const maps: MapId[] = ["delhi", "paris"];
+const active = (e: Entity) =>
+  !e.remove && e.state !== "down" && e.state !== "detained";
+type PoliceAssignment = { mapId: MapId; targetId: number };
 export class GameService {
   worlds: Record<MapId, World>;
   private players = new Map<
@@ -44,6 +48,7 @@ export class GameService {
   private eventCursors = new Map<MapId, number>();
   private pending = new Map<string, Prediction>();
   private appointments = new Map<string, number>();
+  private policeTasks = new Map<string, PoliceAssignment>();
   private appointmentCycle = 0;
   constructor(readonly store: Store) {
     this.worlds = Object.fromEntries(
@@ -92,6 +97,101 @@ export class GameService {
     return this.worlds[this.store.profile(id).mapId].entities.find(
       (e) => e.profileId === id && !e.remove,
     );
+  }
+  private reconcilePoliceTasks(w: World) {
+    const targets = w.entities
+      .filter((e) => active(e) && e.kind === "protester" && e.wanted > 0)
+      .sort((a, b) => b.wanted - a.wanted || a.id - b.id);
+    const targetById = new Map(targets.map((target) => [target.id, target]));
+    const humans = w.entities.filter(
+      (e) =>
+        active(e) &&
+        e.kind === "police" &&
+        !!e.profileId &&
+        this.players.get(e.profileId)?.connected,
+    );
+    const bots = w.entities.filter(
+      (e) => active(e) && e.kind === "police" && !e.isPlayer && !e.remote,
+    );
+    const humanById = new Map(
+      humans.map((officer) => [officer.profileId!, officer]),
+    );
+    const assignedTargets = new Set<number>();
+    const assignedHumans = new Set<string>();
+    const humanTaskTargets = new Set<number>();
+    for (const [profileId, task] of this.policeTasks) {
+      if (task.mapId !== w.map.id) continue;
+      const officer = humanById.get(profileId);
+      if (
+        !officer ||
+        !targetById.has(task.targetId) ||
+        assignedTargets.has(task.targetId)
+      ) {
+        this.policeTasks.delete(profileId);
+        continue;
+      }
+      assignedHumans.add(profileId);
+      humanTaskTargets.add(task.targetId);
+      assignedTargets.add(task.targetId);
+    }
+    const botTaskOwners = new Map<number, Entity>();
+    for (const bot of bots) {
+      const targetId = bot.policeTaskTargetId;
+      if (targetId == null) continue;
+      if (
+        !targetById.has(targetId) ||
+        assignedTargets.has(targetId) ||
+        botTaskOwners.has(targetId)
+      ) {
+        bot.policeTaskTargetId = undefined;
+        continue;
+      }
+      botTaskOwners.set(targetId, bot);
+      assignedTargets.add(targetId);
+    }
+    const freeHumans = humans.filter(
+      (officer) => !assignedHumans.has(officer.profileId!),
+    );
+    const freeBots = bots.filter(
+      (officer) => officer.policeTaskTargetId == null,
+    );
+    const nearest = (officers: Entity[], target: Entity) =>
+      officers
+        .map((officer) => ({
+          officer,
+          distance: Math.hypot(officer.x - target.x, officer.y - target.y),
+        }))
+        .sort(
+          (a, b) => a.distance - b.distance || a.officer.id - b.officer.id,
+        )[0]?.officer;
+    for (const target of targets) {
+      if (humanTaskTargets.has(target.id)) continue;
+      const botOwner = botTaskOwners.get(target.id);
+      if (freeHumans.length) {
+        if (botOwner) {
+          botOwner.policeTaskTargetId = undefined;
+          botTaskOwners.delete(target.id);
+          assignedTargets.delete(target.id);
+        } else if (assignedTargets.has(target.id)) {
+          continue;
+        }
+        const officer = nearest(freeHumans, target)!;
+        freeHumans.splice(freeHumans.indexOf(officer), 1);
+        assignedHumans.add(officer.profileId!);
+        humanTaskTargets.add(target.id);
+        this.policeTasks.set(officer.profileId!, {
+          mapId: w.map.id,
+          targetId: target.id,
+        });
+        assignedTargets.add(target.id);
+      } else if (!assignedTargets.has(target.id) && freeBots.length) {
+        const officer = nearest(freeBots, target)!;
+        freeBots.splice(freeBots.indexOf(officer), 1);
+        officer.order = null;
+        officer.policeTaskTargetId = target.id;
+        assignedTargets.add(target.id);
+      }
+    }
   }
   join(id: string, mapId: MapId, role: Role) {
     if (
@@ -208,6 +308,7 @@ export class GameService {
       seen: this.time,
       connected: true,
     });
+    for (const mapId of maps) this.reconcilePoliceTasks(this.worlds[mapId]);
   }
   input(id: string, input: InputState) {
     const state = this.players.get(id);
@@ -224,6 +325,7 @@ export class GameService {
       state.connected = false;
       state.input = { ...idle };
       state.seen = this.time;
+      this.reconcilePoliceTasks(this.worlds[this.store.profile(id).mapId]);
     }
   }
   command(id: string, message: ClientMessage) {
@@ -475,6 +577,7 @@ export class GameService {
         );
       }
       update(w, dt, idle);
+      this.reconcilePoliceTasks(w);
       this.settle(w);
     }
     if (Math.floor(this.time / 5) > Math.floor((this.time - dt) / 5)) {
@@ -512,6 +615,17 @@ export class GameService {
       for (const event of events) {
         const actor = w.entities.find((e) => e.id === event.actorId),
           target = w.entities.find((e) => e.id === event.targetId);
+        if (
+          event.type === "objective_capture" ||
+          event.type === "objective_defense"
+        ) {
+          const faction = event.faction === "police" ? "Police" : "Protesters";
+          feed(
+            w,
+            `${faction} ${event.type === "objective_capture" ? "secured" : "defended"} the Constitution Book.${actor?.profileId ? ` ${actor.name} led individual contributions.` : ""}`,
+            "good",
+          );
+        }
         for (const bet of due) {
           if (
             bet.contract === "free60" &&
@@ -551,6 +665,7 @@ export class GameService {
           detention: 8,
           evasion: 4,
           objective_contribution: 3,
+          objective_team_reward: 5,
           objective_capture: 15,
           objective_defense: 10,
         };
@@ -662,12 +777,32 @@ export class GameService {
     const p = this.store.profile(id),
       w = this.worlds[p.mapId],
       player = this.entity(id) ?? null;
+    const assignment =
+      p.role === "police" ? this.policeTasks.get(id) : undefined;
+    const target =
+      assignment?.mapId === p.mapId
+        ? w.entities.find((e) => e.id === assignment.targetId && active(e))
+        : undefined;
+    const building = target?.buildingId
+      ? w.map.buildings.find((item) => item.id === target.buildingId)
+      : undefined;
+    const policeTask: PoliceDispatch | undefined = target
+      ? {
+          targetId: target.id,
+          name: target.name,
+          wantedLevel: target.wanted,
+          x: building?.entrance?.x ?? target.x,
+          y: building?.entrance?.y ?? target.y,
+          inBuilding: !!target.buildingId,
+        }
+      : undefined;
     const entities =
       p.role === "watcher"
         ? w.entities
         : w.entities.filter(
             (e) =>
               e === player ||
+              e.id === policeTask?.targetId ||
               (player &&
                 e.buildingId === player.buildingId &&
                 Math.hypot(e.x - player.x, e.y - player.y) < 1100),
@@ -695,6 +830,7 @@ export class GameService {
       rankings: this.store.rankings(),
       online,
       appointmentIn: 900 - (this.time % 900),
+      ...(policeTask ? { policeTask } : {}),
     };
   }
 }

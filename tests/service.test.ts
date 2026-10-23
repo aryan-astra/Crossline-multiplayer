@@ -5,8 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "../src/server/store";
 import { GameService } from "../src/server/service";
-import { emitEvent } from "../src/game/world-rules";
-import { spawnSupply } from "../src/game/engine";
+import {
+  emitEvent,
+  interactObjective,
+  markWanted,
+} from "../src/game/world-rules";
+import { createWorld, spawnSupply } from "../src/game/engine";
 import type { ClientMessage, Command } from "../src/network/protocol";
 
 let sequence = 0;
@@ -127,6 +131,122 @@ test("world interactions report server-validated results to the shared feed", ()
     service.command(id, command({ type: "action", action: "interact" }));
     assert.ok((player.objectiveUntil ?? 0) > w.time);
     assert.match(w.feed[0].text, /joined the Constitution Book objective/);
+  } finally {
+    store.close();
+  }
+});
+
+test("wanted dispatch assigns one nearby officer, reveals its target, and clears when wanted status ends", () => {
+  const { store, service, id } = setup();
+  try {
+    service.join(id, "delhi", "police");
+    const nearer = store.createGuest("Nearer officer").profile,
+      paris = store.createGuest("Paris officer").profile,
+      suspect = store.createGuest("Suspect").profile;
+    service.join(nearer.id, "delhi", "police");
+    service.join(paris.id, "paris", "police");
+    service.join(suspect.id, "delhi", "protester");
+    const w = service.worlds.delhi,
+      first = w.entities.find((e) => e.profileId === id)!,
+      second = w.entities.find((e) => e.profileId === nearer.id)!,
+      target = w.entities.find((e) => e.profileId === suspect.id)!;
+    Object.assign(first, { x: 100, y: 1300 });
+    Object.assign(second, { x: 400, y: 1300 });
+    Object.assign(target, { x: w.map.w - 40, y: 1300 });
+    markWanted(w, target);
+    service.advance(0.05);
+
+    assert.equal(service.snapshot(id, 1, 1).policeTask, undefined);
+    assert.equal(
+      service.snapshot(nearer.id, 1, 1).policeTask?.targetId,
+      target.id,
+    );
+    assert.ok(
+      service
+        .snapshot(nearer.id, 1, 1)
+        .world.entities.some((entity) => entity.id === target.id),
+    );
+    assert.equal(service.snapshot(paris.id, 1, 1).policeTask, undefined);
+
+    service.disconnect(nearer.id);
+    assert.equal(service.snapshot(id, 1, 1).policeTask?.targetId, target.id);
+    target.wanted = 0;
+    service.advance(0.05);
+    assert.equal(service.snapshot(id, 1, 1).policeTask, undefined);
+  } finally {
+    store.close();
+  }
+});
+
+test("police bots cover wanted targets until a connected human takes or leaves the assignment", () => {
+  const { store, service, id } = setup();
+  try {
+    const w = service.worlds.delhi,
+      bot = structuredClone(
+        createWorld(
+          "delhi",
+          "watcher",
+          "Template",
+          "template",
+          0,
+          0,
+        ).entities.find((e) => e.kind === "police")!,
+      ),
+      suspect = store.createGuest("Suspect").profile;
+    bot.id = w.nextId++;
+    bot.think = 10;
+    w.entities.push(bot);
+    service.join(suspect.id, "delhi", "protester");
+    const target = w.entities.find((e) => e.profileId === suspect.id)!;
+    markWanted(w, target);
+    service.advance(0.05);
+    assert.equal(bot.policeTaskTargetId, target.id);
+
+    service.join(id, "delhi", "police");
+    assert.equal(bot.policeTaskTargetId, undefined);
+    assert.equal(service.snapshot(id, 1, 1).policeTask?.targetId, target.id);
+    service.disconnect(id);
+    assert.equal(bot.policeTaskTargetId, target.id);
+
+    service.checkpoint();
+    const restarted = new GameService(store);
+    restarted.join(id, "delhi", "police");
+    assert.equal(restarted.snapshot(id, 1, 1).policeTask?.targetId, target.id);
+  } finally {
+    store.close();
+  }
+});
+
+test("objective payouts select a human leader and settle contributor rewards once", () => {
+  const { store, service, id } = setup();
+  try {
+    service.join(id, "delhi", "protester");
+    const teammate = store.createGuest("Teammate").profile;
+    service.join(teammate.id, "delhi", "protester");
+    const w = service.worlds.delhi,
+      objective = w.objective!,
+      lead = w.entities.find((e) => e.profileId === id)!,
+      helper = w.entities.find((e) => e.profileId === teammate.id)!;
+    Object.assign(lead, { x: objective.x, y: objective.y });
+    Object.assign(helper, { x: objective.x + 20, y: objective.y });
+    objective.captureSeconds = 0.05;
+    assert.equal(interactObjective(w, lead), true);
+    assert.equal(interactObjective(w, helper), true);
+
+    service.advance(0.05);
+    assert.equal(w.objective!.status, "recovering");
+    assert.equal(
+      w.events.find((event) => event.type === "objective_capture")?.actorId,
+      lead.id,
+    );
+    assert.equal(store.profile(id).credits, 92);
+    assert.equal(store.profile(teammate.id).credits, 77);
+    assert.match(w.feed[0].text, /secured the Constitution Book/);
+
+    const restarted = new GameService(store);
+    restarted.advance(0.05);
+    assert.equal(store.profile(id).credits, 92);
+    assert.equal(store.profile(teammate.id).credits, 77);
   } finally {
     store.close();
   }

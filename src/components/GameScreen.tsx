@@ -341,6 +341,7 @@ export default function GameScreen({
           mini.height,
           width,
           height,
+          latest.current?.policeTask,
         );
         total += performance.now() - start;
         frames++;
@@ -466,23 +467,7 @@ export default function GameScreen({
     p = w?.player;
   const nearbyPrompt = interactionPrompt(w, actualRole);
   const selected = w?.entities.find((e) => e.id === selectedId && !e.remove);
-  const wantedTarget =
-    actualRole === "police" && p
-      ? w?.entities
-          .filter(
-            (e) =>
-              !e.remove &&
-              e.kind === "protester" &&
-              e.wanted > 0 &&
-              e.state !== "down" &&
-              e.state !== "detained",
-          )
-          .sort(
-            (a, b) =>
-              Math.hypot(a.x - p.x, a.y - p.y) -
-              Math.hypot(b.x - p.x, b.y - p.y),
-          )[0]
-      : undefined;
+  const policeTask = actualRole === "police" ? snapshot?.policeTask : undefined;
   const online = status === "Connected" && !!snapshot;
   const disabled = !online || !!panel;
   const symbol = w?.map.id === "paris" ? "€" : "₹";
@@ -683,28 +668,32 @@ export default function GameScreen({
         )}
         {actualRole === "police" && (
           <div className="dispatch-card">
-            <p className="eyebrow">WANTED PERSON</p>
-            {wantedTarget ? (
+            <p className="eyebrow">ACTIVE DISPATCH</p>
+            {policeTask ? (
               <>
-                <b>{wantedTarget.name}</b>
+                <b>{policeTask.name}</b>
                 <span>
-                  Level {wantedTarget.wanted} ·{" "}
+                  Level {policeTask.wantedLevel} ·{" "}
                   {Math.round(
                     Math.hypot(
-                      wantedTarget.x - (p?.x ?? 0),
-                      wantedTarget.y - (p?.y ?? 0),
+                      policeTask.x - (p?.x ?? 0),
+                      policeTask.y - (p?.y ?? 0),
                     ),
                   )}{" "}
-                  units away
+                  units away ·{" "}
+                  {policeTask.inBuilding ? "entrance marked" : "target marked"}
                 </span>
-                <button onClick={() => select(wantedTarget.id)}>
-                  Track person
+                <button onClick={() => select(policeTask.targetId)}>
+                  Highlight on map
                 </button>
               </>
             ) : (
-              <span>No active wanted markers in this area.</span>
+              <span>No active dispatch. Protect the Constitution Book.</span>
             )}
-            <small>Detain only when the person is actively violent.</small>
+            <small>
+              Detain only if actively violent; wanted status alone is not
+              grounds for custody.
+            </small>
           </div>
         )}
         <label className="meter">

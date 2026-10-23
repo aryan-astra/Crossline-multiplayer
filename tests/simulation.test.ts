@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import {
   createWorld,
+  spawnPlayer,
   update,
   doAction,
   buy,
@@ -75,6 +76,40 @@ test("fixed inputs and seed reproduce a full headless round independently", () =
   console.log(
     `Two 300s headless rounds, 62 bots each: ${(performance.now() - start).toFixed(1)}ms`,
   );
+});
+
+test("police dispatch pursues peaceful wanted targets without detaining them", () => {
+  const w = createWorld("delhi", "watcher", "Server", "server", 0, 0, 42, {
+    persistent: true,
+  });
+  w.entities = [];
+  w.map.buildings = [];
+  const target = spawnPlayer(w, "protester", "Target", "target")!;
+  const officer = spawnPlayer(w, "police", "Officer", "officer")!;
+  Object.assign(target, { x: 600, y: 600, wanted: 1, violentT: 0 });
+  Object.assign(officer, {
+    x: 300,
+    y: 600,
+    isPlayer: false,
+    remote: false,
+    profileId: undefined,
+    think: 0,
+    policeTaskTargetId: target.id,
+  });
+  w.order = { id: 1, x: 300, y: 300, mode: "move", t: 10, issuer: "Test" };
+  officer.brain.discipline = 1;
+  const x = officer.x;
+  update(w, 0.05, idle);
+  assert.ok(officer.x > x);
+  assert.equal(officer.order, null);
+  assert.equal(target.hp, 100);
+  assert.notEqual(target.state, "detained");
+
+  target.wanted = 0;
+  officer.think = 0;
+  update(w, 0.05, idle);
+  assert.equal(officer.policeTaskTargetId, undefined);
+  assert.equal(target.hp, 100);
 });
 
 test("map destruction cannot leak between worlds or into map templates", () => {

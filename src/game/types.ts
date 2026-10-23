@@ -138,6 +138,7 @@ export interface Entity {
   betWins?: number;
   everViolent?: boolean;
   actingOn?: number | null;
+  policeTaskTargetId?: number;
   detentionsThisRound: number;
   lawfulShots: number;
 }
@@ -221,6 +222,7 @@ export interface WorldEvent {
     | "objective_capture"
     | "objective_defense"
     | "objective_contribution"
+    | "objective_team_reward"
     | "news"
     | "supply_delivery"
     | "resource_collection";

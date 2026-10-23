@@ -70,6 +70,18 @@ test("objective needs sustained cooperation, can be contested, captures once and
   interactObjective(w, b);
   for (let i = 0; i < 5; i++) updateWorldRules(w, 1);
   assert.equal(objective.progress, 5);
+  const npc = structuredClone(a);
+  Object.assign(npc, {
+    id: w.nextId++,
+    profileId: undefined,
+    isPlayer: false,
+    remote: false,
+    name: "NPC",
+  });
+  w.entities.push(npc);
+  objective.contributors[a.id] = 20;
+  objective.contributors[b.id] = 10;
+  objective.contributors[npc.id] = 100;
   const cop = spawnPlayer(w, "police", "Cop", "Cop")!;
   Object.assign(cop, { x: objective.x, y: objective.y + 20 });
   updateWorldRules(w, 1);
@@ -83,7 +95,16 @@ test("objective needs sustained cooperation, can be contested, captures once and
   );
   assert.equal(
     w.events.filter((e) => e.type === "objective_contribution").length,
-    2,
+    3,
+  );
+  const capture = w.events.find((e) => e.type === "objective_capture");
+  assert.equal(capture?.actorId, a.id);
+  assert.deepEqual(
+    w.events
+      .filter((e) => e.type === "objective_team_reward")
+      .map((e) => e.actorId)
+      .sort(),
+    [a.id, b.id].sort(),
   );
   assert.equal(objective.status, "recovering");
   assert.equal(w.factionScores?.protester, 1);
