@@ -94,6 +94,10 @@ input {
   inset: 0;
   overflow: hidden;
   background: #20251f;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
 }
 .game-shell > canvas {
   position: absolute;
@@ -106,8 +110,9 @@ input {
   cursor: crosshair;
 }
 .game-top {
-  position: absolute;
-  inset: 12px 12px auto;
+  position: relative;
+  grid-row: 1;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 18px;
@@ -143,11 +148,14 @@ input {
   color: var(--accent) !important;
 }
 .game-panel {
-  position: absolute;
-  top: 100px;
-  right: 12px;
+  position: relative;
+  grid-row: 2;
+  justify-self: end;
+  align-self: start;
+  min-height: 0;
+  z-index: 1;
   width: 270px;
-  max-height: calc(100dvh - 225px);
+  max-height: 100%;
   overflow: auto;
   background: rgb(23 25 28 / 92%);
   border: 1px solid rgb(255 255 255 / 13%);
@@ -282,10 +290,9 @@ progress::-moz-progress-bar {
   margin: 18px 0 0;
 }
 .game-bottom {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
+  position: relative;
+  grid-row: 3;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -304,6 +311,11 @@ progress::-moz-progress-bar {
 }
 .game-bottom span {
   color: var(--muted);
+}
+.map-credit {
+  font-size: 10px;
+  color: var(--muted);
+  text-decoration: underline;
 }
 .interaction-prompt {
   display: inline-block;
@@ -397,21 +409,70 @@ progress::-moz-progress-bar {
 .game-modal .primary {
   margin-top: 15px;
 }
-.market-row {
+.market-card {
+  margin: 9px 0;
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 4%);
+}
+.market-card-heading {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 0;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.market-card-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.market-card-heading span,
+.market-holding {
+  color: var(--muted);
   font-size: 10px;
 }
-.market-row > span {
-  margin-right: auto;
+.market-quote {
+  text-align: right;
 }
-.market-row small {
+.market-quote span[data-direction="up"] {
+  color: #9bd6a0;
+}
+.market-quote span[data-direction="down"] {
+  color: #f0a09a;
+}
+.market-sparkline {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin: 5px 0;
+  overflow: visible;
+}
+.market-sparkline path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.market-sparkline path[data-direction="up"] {
+  stroke: #9bd6a0;
+}
+.market-sparkline path[data-direction="down"] {
+  stroke: #f0a09a;
+}
+.market-card > p {
+  margin: 5px 0;
   color: var(--muted);
+  font-size: 10px;
 }
-.market-row button {
-  padding: 5px;
+.market-actions {
+  display: flex;
+  gap: 6px;
+}
+.market-actions button {
+  flex: 1;
+  padding: 7px 5px;
+  font-size: 10px;
 }
 .supply-actions {
   display: flex;
@@ -444,8 +505,12 @@ progress::-moz-progress-bar {
   }
 }
 @media (max-width: 600px) {
+  .game-shell {
+    padding: max(6px, env(safe-area-inset-top)) 6px
+      max(6px, env(safe-area-inset-bottom));
+    gap: 8px;
+  }
   .game-top {
-    inset: max(6px, env(safe-area-inset-top)) 6px auto;
     gap: 5px;
     padding: 8px;
   }
@@ -466,9 +531,9 @@ progress::-moz-progress-bar {
     font-size: 10px;
   }
   .game-panel {
-    inset: auto 8px calc(178px + env(safe-area-inset-bottom));
-    width: auto;
-    max-height: min(42dvh, 420px);
+    width: 100%;
+    align-self: end;
+    max-height: min(42dvh, 100%);
     padding: 12px;
   }
   .game-panel h2 {
@@ -488,9 +553,6 @@ progress::-moz-progress-bar {
     font-size: 10px;
   }
   .game-bottom {
-    bottom: max(6px, env(safe-area-inset-bottom));
-    left: 5px;
-    right: 5px;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;

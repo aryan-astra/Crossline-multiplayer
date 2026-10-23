@@ -9,6 +9,7 @@ import {
   trackCamera,
 } from "@/game/camera";
 import { interactionPrompt } from "@/game/prompts";
+import { DirectionalEventAudio } from "@/game/audio";
 import { connectWorld, isStaleSnapshot } from "@/network/client";
 import type { Command, Snapshot } from "@/network/protocol";
 import type { InputState, MapId, Role, World } from "@/game/types";
@@ -46,6 +47,7 @@ export default function GameScreen({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const minimap = useRef<HTMLCanvasElement>(null);
+  const marketSection = useRef<HTMLDetailsElement>(null);
   const modal = useRef<HTMLDialogElement>(null);
   const latest = useRef<Snapshot | null>(null);
   const previous = useRef<Snapshot | null>(null);
@@ -64,6 +66,7 @@ export default function GameScreen({
   const paused = useRef(false);
   const qualityRef = useRef(2);
   const audio = useRef<AudioContext | null>(null);
+  const sound = useRef<DirectionalEventAudio | null>(null);
   const volumeRef = useRef(0);
   const sendRef = useRef<(command: Command) => boolean>(() => false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -83,6 +86,7 @@ export default function GameScreen({
       typeof window !== "undefined" &&
       window.matchMedia("(max-width: 600px)").matches,
   );
+  const [marketOpen, setMarketOpen] = useState(false);
 
   const select = (id: number | null) => {
     selectedRef.current = id;
@@ -112,6 +116,27 @@ export default function GameScreen({
   const action = (kind: Extract<Command, { type: "action" }>["action"]) =>
     actionRef.current(kind);
 
+  const setSoundVolume = (value: number) => {
+    volumeRef.current = value;
+    setVolume(value);
+    if (value <= 0) return;
+    try {
+      audio.current ??= new AudioContext();
+      if (!sound.current) {
+        sound.current = new DirectionalEventAudio(audio.current);
+        if (latest.current)
+          sound.current.update(latest.current.world, camera.current, 0);
+      }
+      void sound.current
+        .resume()
+        .catch(() =>
+          setNotice("Audio could not start; gameplay remains available."),
+        );
+    } catch {
+      setNotice("Audio is unavailable in this browser.");
+    }
+  };
+
   useEffect(() => {
     if (panel) modal.current?.showModal();
     else modal.current?.close();
@@ -119,6 +144,7 @@ export default function GameScreen({
 
   useEffect(
     () => () => {
+      sound.current?.dispose();
       if (audio.current && audio.current.state !== "closed")
         void audio.current.close();
     },
@@ -139,6 +165,7 @@ export default function GameScreen({
       onStatus: (next) => {
         if (!stopped) {
           if (next !== "Connected") connectionEpoch++;
+          if (next !== "Connected") sound.current?.resetHistory();
           setStatus(next);
           if (next === "Connected") setNotice("");
           if (next !== "Connected") input.current = emptyInput();
@@ -171,32 +198,7 @@ export default function GameScreen({
           setSelectedId(null);
           setFollowing(false);
         }
-        const event = next.world.events?.at(-1);
-        if (
-          event &&
-          event.id !== old?.world.events?.at(-1)?.id &&
-          ["objective_capture", "objective_defense", "death"].includes(
-            event.type,
-          ) &&
-          audio.current &&
-          volumeRef.current > 0
-        ) {
-          const oscillator = audio.current.createOscillator(),
-            gain = audio.current.createGain();
-          oscillator.frequency.value = event.type === "death" ? 180 : 520;
-          gain.gain.setValueAtTime(
-            volumeRef.current * 0.08,
-            audio.current.currentTime,
-          );
-          gain.gain.exponentialRampToValueAtTime(
-            0.001,
-            audio.current.currentTime + 0.15,
-          );
-          oscillator.connect(gain);
-          gain.connect(audio.current.destination);
-          oscillator.start();
-          oscillator.stop(audio.current.currentTime + 0.16);
-        }
+        sound.current?.update(next.world, camera.current, volumeRef.current);
       },
     });
     sendRef.current = connection.send;
@@ -376,9 +378,11 @@ export default function GameScreen({
       if (
         paused.current ||
         (event.target instanceof Element &&
-          event.target.closest(
-            "input,select,textarea,button,summary,a,[contenteditable=true]",
-          ))
+          (event.target.closest(
+            "input,select,textarea,[contenteditable=true]",
+          ) ||
+            ((event.key === " " || event.key === "Enter") &&
+              event.target.closest("button,summary,a"))))
       )
         return;
       const key = event.key.toLowerCase();
@@ -611,6 +615,20 @@ export default function GameScreen({
         >
           {hudCollapsed ? "Show HUD" : "Hide HUD"}
         </button>
+        {actualRole === "watcher" && (
+          <button
+            onClick={() => {
+              setHudCollapsed(false);
+              setMarketOpen(true);
+              requestAnimationFrame(() => {
+                marketSection.current?.scrollIntoView({ block: "nearest" });
+              });
+            }}
+          >
+            Markets &amp; supplies
+          </button>
+        )}
+        <button onClick={() => togglePanel("guide")}>How to play</button>
         <button onClick={() => togglePanel("settings")}>Settings</button>
         <button onClick={onExit}>Leave</button>
       </header>
@@ -770,8 +788,8 @@ export default function GameScreen({
                   send({ type: "observe", mapId: event.target.value as MapId })
                 }
               >
-                <option value="delhi">Mantar Jantar</option>
-                <option value="paris">Paris / Republica Plaza</option>
+                <option value="delhi">Jantar Mantar, New Delhi</option>
+                <option value="paris">Place de la République, Paris</option>
               </select>
             </label>
           </>
@@ -810,41 +828,102 @@ export default function GameScreen({
           </div>
         )}
         {actualRole === "watcher" && (
-          <details>
+          <details
+            ref={marketSection}
+            open={marketOpen}
+            onToggle={(event) => setMarketOpen(event.currentTarget.open)}
+          >
             <summary>Markets, predictions & supplies</summary>
             <p className="muted">
-              Fictional credits. Trades use rounded quotes with a 2% fee
-              (minimum 1). Predictions pay 2× stake including stake returned. At
-              most five open predictions; each stake is limited to 20% of your
-              balance.
+              Fictional credits. Trades buy or sell one unit at the rounded
+              quote plus a 2% fee (minimum 1). Predictions pay 2× stake
+              including stake returned. At most five open predictions; each
+              stake is limited to 20% of your balance.
             </p>
-            {w?.instruments.map((item) => (
-              <div className="market-row" key={item.id}>
-                <span>
-                  {item.ticker} {symbol}
-                  {item.price.toFixed(0)}{" "}
-                  <small>×{snapshot?.holdings[item.id] ?? 0}</small>
-                </span>
-                <button
-                  disabled={disabled}
-                  aria-label={`Buy ${item.name}`}
-                  onClick={() =>
-                    send({ type: "trade", instrument: item.id, quantity: 1 })
-                  }
-                >
-                  Buy
-                </button>
-                <button
-                  disabled={disabled}
-                  aria-label={`Sell ${item.name}`}
-                  onClick={() =>
-                    send({ type: "trade", instrument: item.id, quantity: -1 })
-                  }
-                >
-                  Sell
-                </button>
-              </div>
-            ))}
+            {w?.instruments.map((item) => {
+              const holding = snapshot?.holdings[item.id] ?? 0;
+              const quote = Math.round(item.price);
+              const fee = Math.max(1, Math.ceil(quote * 0.02));
+              const history = item.history;
+              const min = Math.min(...history);
+              const max = Math.max(...history);
+              const path = history
+                .map((value, index) => {
+                  const x = 2 + (index / Math.max(1, history.length - 1)) * 76;
+                  const y = 22 - ((value - min) / (max - min || 1)) * 20;
+                  return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+                })
+                .join(" ");
+              const change = item.price - item.prev;
+              const direction =
+                change > 0 ? "up" : change < 0 ? "down" : "flat";
+              return (
+                <article className="market-card" key={item.id}>
+                  <div className="market-card-heading">
+                    <div>
+                      <b>{item.ticker}</b>
+                      <span>{item.name}</span>
+                    </div>
+                    <div className="market-quote">
+                      <b>
+                        {symbol}
+                        {item.price.toFixed(2)}
+                      </b>
+                      <span data-direction={direction}>
+                        {change > 0 ? "+" : ""}
+                        {change.toFixed(2)} vs previous
+                      </span>
+                    </div>
+                  </div>
+                  <svg
+                    className="market-sparkline"
+                    viewBox="0 0 80 24"
+                    role="img"
+                    aria-label={`${item.name} price history`}
+                  >
+                    <path d={path} data-direction={direction} />
+                  </svg>
+                  <p>{item.desc}</p>
+                  <p className="market-holding">
+                    Holding: {holding} unit{holding === 1 ? "" : "s"} · Value{" "}
+                    {symbol}
+                    {(holding * item.price).toFixed(2)}
+                  </p>
+                  <div className="market-actions">
+                    <button
+                      disabled={
+                        disabled || (snapshot?.self.credits ?? 0) < quote + fee
+                      }
+                      aria-label={`Buy one ${item.name} for ${symbol}${quote + fee} including fee`}
+                      onClick={() =>
+                        send({
+                          type: "trade",
+                          instrument: item.id,
+                          quantity: 1,
+                        })
+                      }
+                    >
+                      Buy · {symbol}
+                      {quote + fee}
+                    </button>
+                    <button
+                      disabled={disabled || holding < 1}
+                      aria-label={`Sell one ${item.name}`}
+                      onClick={() =>
+                        send({
+                          type: "trade",
+                          instrument: item.id,
+                          quantity: -1,
+                        })
+                      }
+                    >
+                      Sell · {symbol}
+                      {quote - fee}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
             <label className="inspect-label">
               Prediction stake (1–50)
               <input
@@ -949,7 +1028,6 @@ export default function GameScreen({
           ))}
         </details>
         <div className="view-controls">
-          <button onClick={() => togglePanel("guide")}>How to play</button>
           <button onClick={() => togglePanel("rankings")}>Rankings</button>
         </div>
         <p className="perf">
@@ -967,6 +1045,15 @@ export default function GameScreen({
             WASD / arrows move · Shift run · World continues while settings are
             open
           </span>
+          <br />
+          <a
+            className="map-credit"
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+          >
+            © OpenStreetMap contributors
+          </a>
         </p>
         {actualRole !== "watcher" && (
           <div className="action-buttons">
@@ -1127,31 +1214,26 @@ export default function GameScreen({
               </select>
             </label>
             <label className="inspect-label">
-              Notification volume
+              Directional sound volume
               <input
-                aria-label="Notification volume"
+                aria-label="Directional sound volume"
                 type="range"
                 min="0"
                 max="1"
                 step="0.1"
                 value={volume}
                 onChange={(event) => {
-                  const value = Number(event.target.value);
-                  volumeRef.current = value;
-                  setVolume(value);
-                  if (value > 0) {
-                    audio.current ??= new AudioContext();
-                    void audio.current
-                      .resume()
-                      .catch(() =>
-                        setNotice(
-                          "Audio could not start; gameplay remains available.",
-                        ),
-                      );
-                  }
+                  setSoundVolume(Number(event.target.value));
                 }}
               />
             </label>
+            <button onClick={() => setSoundVolume(volume > 0 ? 0 : 0.4)}>
+              {volume > 0 ? "Mute sound" : "Enable sound"}
+            </button>
+            <p>
+              Synthesized positional cues for nearby chants, custody, supplies
+              and objectives. Stereo direction follows the camera.
+            </p>
             <p>
               Zoom is fixed for active roles. Spectators can pan, follow, and
               zoom.

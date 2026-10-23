@@ -11,8 +11,8 @@ import "./menu.css";
 const locations = [
   {
     id: "delhi" as const,
-    name: "Mantar Jantar",
-    landmark: "Fictional Delhi inspired observatory",
+    name: "Delhi · Jantar Mantar",
+    landmark: "Jantar Mantar / New Delhi",
     image: "/img/crossline-delhi.png",
     atmosphere: "Warm. Dusty. Restless.",
     description:
@@ -21,8 +21,8 @@ const locations = [
   },
   {
     id: "paris" as const,
-    name: "Paris · Republica Plaza",
-    landmark: "République / Paris inspired",
+    name: "Paris · Place de la République",
+    landmark: "Place de la République / Paris",
     image: "/img/crossline-paris.png",
     atmosphere: "Blue hour. All eyes on the square.",
     description:
@@ -79,6 +79,8 @@ export default function Home() {
   const [name, setName] = useState("");
   const [playing, setPlaying] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [connectionFailed, setConnectionFailed] = useState(false);
   const [serverStatus, setServerStatus] = useState(
     "Connecting to public world…",
   );
@@ -95,13 +97,15 @@ export default function Home() {
         }
       })
       .catch(() => {
-        if (!cancelled)
-          setServerStatus("Server unavailable · start npm run dev");
+        if (!cancelled) {
+          setServerStatus("Connection unavailable");
+          setConnectionFailed(true);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [playing]);
+  }, [playing, connectionAttempt]);
   if (playing)
     return (
       <GameScreen
@@ -128,6 +132,18 @@ export default function Home() {
         <span className="practice-status">
           <i /> {serverStatus}
         </span>
+        {connectionFailed && (
+          <button
+            type="button"
+            onClick={() => {
+              setConnectionFailed(false);
+              setServerStatus("Connecting to public world…");
+              setConnectionAttempt((value) => value + 1);
+            }}
+          >
+            Retry connection
+          </button>
+        )}
       </header>
       <section className="crossline-hero" aria-labelledby="game-title">
         <Image
@@ -204,7 +220,7 @@ export default function Home() {
         </div>
         <div className="hero-caption">
           <span>One crowd. Countless intentions.</span>
-          <span>Delhi inspired / Paris inspired</span>
+          <span>Delhi / Paris · Illustrated scenes</span>
         </div>
       </section>
       <div className="menu-body">
@@ -249,6 +265,10 @@ export default function Home() {
               </button>
             ))}
           </div>
+          <p className="muted">
+            Playable streets and building footprints follow OpenStreetMap data.
+            Artwork, interiors, security positions and events are fictional.
+          </p>
         </section>
         <section
           id="roles"
