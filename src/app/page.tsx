@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import GameScreen from "@/components/GameScreen";
 import type { MapId, Role } from "@/game/types";
+import type { Profile } from "@/network/protocol";
 import "./menu.css";
 
 const locations = [
   {
     id: "delhi" as const,
-    name: "Meridian Quarter",
-    landmark: "Jantar Mantar / Delhi inspired",
+    name: "Mantar Jantar",
+    landmark: "Fictional Delhi inspired observatory",
     image: "/img/crossline-delhi.png",
     atmosphere: "Warm. Dusty. Restless.",
     description:
@@ -20,7 +21,7 @@ const locations = [
   },
   {
     id: "paris" as const,
-    name: "Concord Square",
+    name: "Paris · Republica Plaza",
     landmark: "République / Paris inspired",
     image: "/img/crossline-paris.png",
     atmosphere: "Blue hour. All eyes on the square.",
@@ -67,7 +68,7 @@ const roles = [
     color: "#c4a4e6",
     tag: "Read the city",
     description:
-      "See the bigger picture. Trade the practice market, bet on outcomes and send in supplies.",
+      "See the bigger picture. Trade the fictional market, predict outcomes and send in supplies.",
     control: "Free camera · Markets & supplies",
   },
 ];
@@ -77,6 +78,30 @@ export default function Home() {
   const [role, setRole] = useState<Role>("protester");
   const [name, setName] = useState("");
   const [playing, setPlaying] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [serverStatus, setServerStatus] = useState(
+    "Connecting to public world…",
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/session", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Server unavailable");
+        const data = (await response.json()) as { profile: Profile };
+        if (!cancelled) {
+          setProfile(data.profile);
+          setName(data.profile.name);
+          setServerStatus("Persistent public world");
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setServerStatus("Server unavailable · start npm run dev");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playing]);
   if (playing)
     return (
       <GameScreen
@@ -92,8 +117,8 @@ export default function Home() {
   return (
     <main className="crossline-menu">
       <header className="crossline-header">
-        <Link href="/" className="crossline-logo" aria-label="Crossline home">
-          <span aria-hidden="true">╱╱</span> CROSSLINE
+        <Link href="/" className="crossline-logo" aria-label="Faultline home">
+          <span aria-hidden="true">╱╱</span> FAULTLINE
         </Link>
         <nav aria-label="Main navigation">
           <a href="#locations">The locations</a>
@@ -101,7 +126,7 @@ export default function Home() {
           <a href="#field-guide">Field guide</a>
         </nav>
         <span className="practice-status">
-          <i /> Local practice
+          <i /> {serverStatus}
         </span>
       </header>
       <section className="crossline-hero" aria-labelledby="game-title">
@@ -118,7 +143,7 @@ export default function Home() {
           <div className="hero-heading">
             <span className="street-sticker">Every street has two sides</span>
             <h1 id="game-title">
-              CROSSLINE<span>CROWD COMMAND</span>
+              FAULTLINE<span>CROWD COMMAND</span>
             </h1>
             <p>
               A city on the edge. A crowd with a mind of its own.
@@ -127,13 +152,13 @@ export default function Home() {
             </p>
             <div className="hero-facts">
               <span>
-                <b>62</b> autonomous agents
+                <b>Live</b> autonomous crowds
               </span>
               <span>
                 <b>4</b> perspectives
               </span>
               <span>
-                <b>5</b> minutes on the ground
+                <b>One</b> continuous public world
               </span>
             </div>
           </div>
@@ -172,7 +197,8 @@ export default function Home() {
               Join the streets <span aria-hidden="true">↗</span>
             </button>
             <p className="registration-note">
-              No account needed. All roles open in practice.
+              Guest identity saved in this browser. Military appointments are
+              earned.
             </p>
           </form>
         </div>
@@ -244,6 +270,7 @@ export default function Home() {
                 className={`illustrated-role ${role === item.id ? "is-selected" : ""}`}
                 style={{ "--card-accent": item.color } as React.CSSProperties}
                 aria-pressed={role === item.id}
+                disabled={item.id === "military" && !profile?.appointmentUntil}
                 onClick={() => setRole(item.id)}
               >
                 <span className="role-portrait">
@@ -255,7 +282,11 @@ export default function Home() {
                   />
                   <span className="portrait-shade" />
                   <span className="role-selection">
-                    {role === item.id ? "✓ Selected" : "+ Choose role"}
+                    {item.id === "military" && !profile?.appointmentUntil
+                      ? "Earn a police appointment"
+                      : role === item.id
+                        ? "✓ Selected"
+                        : "+ Choose role"}
                   </span>
                 </span>
                 <span className="role-copy">
@@ -286,13 +317,14 @@ export default function Home() {
           </div>
           <button
             className="launch-button"
-            disabled={name.trim().length < 2}
+            disabled={name.trim().length < 2 || !profile}
             onClick={() => setPlaying(true)}
           >
             Enter the city <span aria-hidden="true">↗</span>
           </button>
           <p className="practice-explanation">
-            Local practice. Credits and results reset when you leave.
+            Saved profile · {profile?.credits ?? "—"} fictional credits. The
+            world continues when you leave.
           </p>
         </section>
         <section
@@ -325,8 +357,8 @@ export default function Home() {
                 <h3>Command carries consequences</h3>
                 <p>
                   Move your officers into formation. Detain nearby threats.
-                  Military engagement requires a warning and an active violent
-                  target.
+                  Military engagement requires a warning and an imminent serious
+                  threat.
                 </p>
               </div>
             </article>
@@ -335,8 +367,8 @@ export default function Home() {
               <div>
                 <h3>Watch more than the street</h3>
                 <p>
-                  Session markets react to tension and damage. Fund a side and a
-                  supply truck physically delivers crates into the city.
+                  Persistent markets react to tension and damage. Fund a side
+                  and a supply truck physically delivers crates into the city.
                 </p>
               </div>
             </article>
@@ -344,7 +376,7 @@ export default function Home() {
         </section>
         <footer className="crossline-footer">
           <Link href="/" className="crossline-logo">
-            <span aria-hidden="true">╱╱</span> CROSSLINE
+            <span aria-hidden="true">╱╱</span> FAULTLINE
           </Link>
           <p>A city in the balance.</p>
           <a href="https://github.com/aryan-astra/Crossline-multiplayer">

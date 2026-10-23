@@ -84,6 +84,12 @@ input {
   align-items: center;
 }
 .game-shell {
+  --bg: #17191c;
+  --panel: #202328;
+  --line: #454950;
+  --cream: #f0f0ee;
+  --muted: #b3b5b9;
+  --accent: #e0dfd5;
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -103,9 +109,10 @@ input {
   position: absolute;
   inset: 12px 12px auto;
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
   align-items: center;
-  background: #141b1bf0;
+  background: #17191cf0;
   border: 1px solid var(--line);
   padding: 13px 18px;
 }
@@ -140,9 +147,12 @@ input {
   width: 270px;
   max-height: calc(100dvh - 225px);
   overflow: auto;
-  background: #141b1bf2;
+  background: #17191cf2;
   border: 1px solid var(--line);
   padding: 16px;
+}
+.game-panel[data-collapsed="true"] {
+  display: none;
 }
 .game-panel h2 {
   font-size: 21px;
@@ -248,10 +258,11 @@ progress::-moz-progress-bar {
   left: 12px;
   right: 12px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  background: #141b1bf0;
+  background: #17191cf0;
   padding: 12px 18px;
   border: 1px solid var(--line);
 }
@@ -282,6 +293,8 @@ progress::-moz-progress-bar {
   touch-action: none;
 }
 .game-modal {
+  max-height: 90dvh;
+  overflow: auto;
   position: absolute;
   margin: 0;
   color: var(--cream);
@@ -351,6 +364,7 @@ progress::-moz-progress-bar {
 }
 .supply-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 5px;
   margin-top: 12px;
 }
@@ -361,6 +375,12 @@ progress::-moz-progress-bar {
 @media (max-width: 900px) {
   .game-top {
     gap: 10px;
+  }
+  .game-top > div {
+    flex-basis: 100%;
+  }
+  .game-top button {
+    min-height: 36px;
   }
   .game-panel {
     width: 235px;
@@ -392,7 +412,7 @@ progress::-moz-progress-bar {
     font-size: 9px;
   }
   .game-panel {
-    top: 78px;
+    top: 115px;
     right: 5px;
     width: 170px;
     max-height: calc(100dvh - 250px);
@@ -432,6 +452,7 @@ progress::-moz-progress-bar {
   }
   .action-buttons button {
     padding: 9px;
+    min-height: 44px;
   }
   .touch-pad {
     display: flex;
@@ -439,6 +460,8 @@ progress::-moz-progress-bar {
   }
   .touch-pad button {
     padding: 9px 10px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .game-modal {
     padding: 25px;
@@ -448,6 +471,9 @@ progress::-moz-progress-bar {
   }
 }
 @media (pointer: coarse) {
+  .game-shell button {
+    min-height: 44px;
+  }
   .touch-pad {
     display: flex;
   }
