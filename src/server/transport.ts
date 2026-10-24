@@ -11,6 +11,7 @@ import { advance, STEP } from "../game/loop";
 import { parseMessage, type ServerMessage } from "../network/protocol";
 import { GameService } from "./service";
 import type { Store } from "./store";
+import type { MapId } from "../game/types";
 
 const COOKIE = "crossline_session";
 const MAX_QUEUE = 512 * 1024;
@@ -24,6 +25,7 @@ type Connection = {
   actions: number;
   blockedAt: number;
   invalid: number;
+  mapId?: MapId;
 };
 
 function token(request: IncomingMessage): string {
@@ -36,7 +38,7 @@ function token(request: IncomingMessage): string {
   );
 }
 
-function sameOrigin(request: IncomingMessage): boolean {
+function sameOrigin(request: IncomingMessage, publicOrigin?: string): boolean {
   try {
     const protocol =
       "encrypted" in request.socket && request.socket.encrypted
@@ -45,7 +47,7 @@ function sameOrigin(request: IncomingMessage): boolean {
     return (
       typeof request.headers.origin === "string" &&
       new URL(request.headers.origin).origin ===
-        `${protocol}//${request.headers.host}`
+        (publicOrigin ?? `${protocol}//${request.headers.host}`)
     );
   } catch {
     return false;
@@ -90,18 +92,39 @@ export function createGameServer({
   store,
   handler,
   tick = true,
+  publicOrigin,
 }: {
   store: Store;
   handler?: RequestListener;
   tick?: boolean;
+  publicOrigin?: string;
 }) {
+  if (publicOrigin) {
+    const url = new URL(publicOrigin);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash
+    )
+      throw new Error("PUBLIC_ORIGIN must be an HTTP(S) origin");
+    publicOrigin = url.origin;
+  }
   const service = new GameService(store);
   const clients = new Map<string, Connection>();
   const requests = new Map<string, { start: number; count: number }>();
   const socketOptions = {
     noServer: true,
     maxPayload: 8192,
-    perMessageDeflate: false,
+    perMessageDeflate: {
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      concurrencyLimit: 4,
+      threshold: 1024,
+      zlibDeflateOptions: { level: 1, memLevel: 1 },
+    },
     closeTimeout: 1000,
   };
   const sockets = new WebSocketServer(socketOptions);
@@ -140,7 +163,7 @@ export function createGameServer({
       }
       if (request.method !== "GET" && request.method !== "POST")
         return respond(response, 405, { error: "Method not allowed" });
-      if (request.method === "POST" && !sameOrigin(request))
+      if (request.method === "POST" && !sameOrigin(request, publicOrigin))
         return respond(response, 403, { error: "Origin rejected" });
       let profile = store.identify(token(request));
       const name =
@@ -149,7 +172,8 @@ export function createGameServer({
         const guest = store.createGuest(name);
         profile = guest.profile;
         const secure =
-          "encrypted" in request.socket && request.socket.encrypted
+          ("encrypted" in request.socket && request.socket.encrypted) ||
+          publicOrigin?.startsWith("https:")
             ? "; Secure"
             : "";
         response.setHeader(
@@ -177,21 +201,37 @@ export function createGameServer({
     );
   };
   const send = (connection: Connection, message: ServerMessage) => {
-    if (connection.socket.readyState !== WebSocket.OPEN) return;
+    if (connection.socket.readyState !== WebSocket.OPEN) return false;
     if (connection.socket.bufferedAmount > MAX_QUEUE) {
       if (!connection.blockedAt) connection.blockedAt = Date.now();
       if (Date.now() - connection.blockedAt > 5000)
         connection.socket.terminate();
-      return;
+      return false;
     }
     connection.blockedAt = 0;
     connection.socket.send(JSON.stringify(message), (error) => {
       if (error) connection.socket.terminate();
     });
+    return true;
   };
   const snapshot = (id: string, connection: Connection) => {
     try {
-      send(connection, service.snapshot(id, connection.seq, clients.size));
+      const full = service.snapshot(id, connection.seq, clients.size);
+      if (connection.mapId !== full.world.map.id) {
+        if (!send(connection, { v: 1, type: "map", map: full.world.map }))
+          return;
+        connection.mapId = full.world.map.id;
+      }
+      const { map, ...world } = full.world;
+      const compact = {
+        ...full,
+        world,
+        mapId: map.id,
+        buildingStates: map.buildings.map(
+          (building) => [building.hp, !!building.broken] as [number, boolean],
+        ),
+      };
+      send(connection, compact);
     } catch (error) {
       console.error("Snapshot failed", error);
       connection.socket.close(1011, "Snapshot unavailable");
@@ -203,7 +243,8 @@ export function createGameServer({
       return;
     }
     if (closing) return reject(socket, 503, "Unavailable");
-    if (!sameOrigin(request)) return reject(socket, 403, "Forbidden");
+    if (!sameOrigin(request, publicOrigin))
+      return reject(socket, 403, "Forbidden");
     if (!permitted(request)) return reject(socket, 429, "Too Many Requests");
     const profile = store.identify(token(request));
     if (!profile) return reject(socket, 401, "Unauthorized");
@@ -226,7 +267,10 @@ export function createGameServer({
       const previous = clients.get(profile.id);
       clients.set(profile.id, connection);
       previous?.socket.close(4001, "Session opened in another tab");
-      websocket.on("error", () => websocket.terminate());
+      websocket.on("error", () => {
+        // Receiver errors already start a bounded protocol close (e.g. oversized input).
+        if (websocket.readyState === WebSocket.OPEN) websocket.terminate();
+      });
       websocket.on("pong", () => {
         connection.alive = true;
       });

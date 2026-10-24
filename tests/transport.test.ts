@@ -3,13 +3,16 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
+import { deflateRawSync } from "node:zlib";
 import { createGameServer } from "../src/server/transport";
 import { Store } from "../src/server/store";
 import type { Profile, ServerMessage, Snapshot } from "../src/network/protocol";
+import { readServerMessage } from "../src/network/client";
+import type { MapDef, MapId } from "../src/game/types";
 
-async function setup(tick = false) {
+async function setup(tick = false, publicOrigin?: string) {
   const store = new Store(":memory:");
-  const game = createGameServer({ store, tick });
+  const game = createGameServer({ store, tick, publicOrigin });
   game.server.listen(0, "127.0.0.1");
   await once(game.server, "listening");
   const address = game.server.address();
@@ -19,7 +22,10 @@ async function setup(tick = false) {
   async function guest(name: string) {
     const response = await fetch(`${origin}/api/session`, {
       method: "POST",
-      headers: { Origin: origin, "Content-Type": "application/json" },
+      headers: {
+        Origin: publicOrigin ?? origin,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ name }),
     });
     assert.equal(response.status, 200);
@@ -30,13 +36,20 @@ async function setup(tick = false) {
   }
   async function connect(cookie: string) {
     const ws = new WebSocket(`${origin.replace("http", "ws")}/socket`, {
-      headers: { Cookie: cookie, Origin: origin },
+      headers: { Cookie: cookie, Origin: publicOrigin ?? origin },
     });
     connections.push(ws);
-    const messages: ServerMessage[] = [];
-    ws.on("message", (raw) =>
-      messages.push(JSON.parse(raw.toString()) as ServerMessage),
-    );
+    const messages: (
+      | Snapshot
+      | Extract<ServerMessage, { type: "ack" | "error" }>
+    )[] = [];
+    const maps = new Map<MapId, MapDef>();
+    const rawFrames: string[] = [];
+    ws.on("message", (raw) => {
+      rawFrames.push(raw.toString());
+      const message = readServerMessage(raw.toString(), maps);
+      if (message && message.type !== "map") messages.push(message);
+    });
     ws.on("error", () => {});
     await once(ws, "open");
     async function wait<T extends ServerMessage>(
@@ -59,6 +72,7 @@ async function setup(tick = false) {
     return {
       ws,
       messages,
+      rawFrames,
       wait,
       send: (value: unknown) => ws.send(JSON.stringify(value)),
     };
@@ -70,6 +84,32 @@ async function setup(tick = false) {
   }
   return { ...game, store, origin, guest, connect, close };
 }
+
+test("explicit HTTPS proxy origin accepts the public site, sets secure cookies and rejects forwarded-header spoofing", async () => {
+  const game = await setup(false, "https://crossline.example");
+  try {
+    const guest = await game.guest("Proxy player");
+    const response = await fetch(`${game.origin}/api/session`);
+    assert.match(response.headers.get("set-cookie")!, /; Secure/);
+    const socket = await game.connect(guest.cookie);
+    await socket.wait(
+      (message): message is Snapshot => message.type === "snapshot",
+    );
+    const rejected = await fetch(`${game.origin}/api/session`, {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.example",
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Host": "attacker.example",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: "Spoof" }),
+    });
+    assert.equal(rejected.status, 403);
+  } finally {
+    await game.close();
+  }
+});
 
 test("two authenticated WebSocket sessions share server movement, bot state and objective; replay is rejected", async () => {
   const game = await setup();
@@ -124,6 +164,34 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
     );
     const b = await second.wait(
       (m): m is Snapshot => m.type === "snapshot" && m.tick === tick,
+    );
+    assert.equal(
+      first.rawFrames.filter((raw) => JSON.parse(raw).type === "map").length,
+      1,
+    );
+    const baseline = JSON.stringify(
+      game.service.snapshot(actor.profile.id, 1, 2),
+    );
+    const compact = first.rawFrames.find((raw) => {
+      const frame = JSON.parse(raw);
+      return frame.type === "snapshot" && frame.tick === tick;
+    })!;
+    assert.ok(
+      compact.length < baseline.length * 0.7,
+      `${compact.length} < ${baseline.length} * 0.7`,
+    );
+    assert.match(first.ws.extensions, /permessage-deflate/);
+    const compressedBytes = deflateRawSync(compact, {
+      level: 1,
+      memLevel: 1,
+    }).length;
+    assert.ok(
+      compressedBytes < compact.length * 0.5,
+      `${compressedBytes} < ${compact.length} / 2`,
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(a.world.map)),
+      JSON.parse(JSON.stringify(game.service.worlds.delhi.map)),
     );
     const seenA = a.world.entities.find(
       (e) => e.profileId === actor.profile.id,

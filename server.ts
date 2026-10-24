@@ -15,7 +15,11 @@ async function main() {
   const app = next({ dev, hostname, port });
   await app.prepare();
   const store = new Store(process.env.DATA_FILE ?? "data/crossline.sqlite");
-  const game = createGameServer({ store, handler: app.getRequestHandler() });
+  const game = createGameServer({
+    store,
+    handler: app.getRequestHandler(),
+    publicOrigin: process.env.PUBLIC_ORIGIN ?? process.env.RENDER_EXTERNAL_URL,
+  });
   game.server.on("upgrade", (request, socket, head) => {
     if (request.url?.split("?")[0] !== "/socket")
       void app

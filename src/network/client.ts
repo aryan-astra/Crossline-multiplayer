@@ -1,6 +1,16 @@
-import type { Command, ServerMessage, Snapshot } from "./protocol";
+import type {
+  Command,
+  MapMessage,
+  ServerMessage,
+  Snapshot,
+  WireSnapshot,
+} from "./protocol";
+import type { MapDef, MapId } from "../game/types";
 
-export function readServerMessage(raw: string): ServerMessage | null {
+export function readServerMessage(
+  raw: string,
+  maps?: Map<MapId, MapDef>,
+): Snapshot | Extract<ServerMessage, { type: "map" | "ack" | "error" }> | null {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -10,10 +20,21 @@ export function readServerMessage(raw: string): ServerMessage | null {
   if (!value || typeof value !== "object") return null;
   const message = value as Record<string, unknown>;
   if (message.v !== 1) return null;
+  if (message.type === "map") {
+    const map = message.map as MapDef | undefined;
+    if (
+      !map ||
+      !["delhi", "paris"].includes(map.id) ||
+      !Array.isArray(map.buildings)
+    )
+      return null;
+    maps?.set(map.id, map);
+    return value as MapMessage;
+  }
   if (message.type === "ack" || message.type === "error") {
     return typeof message.message === "string" &&
       Number.isSafeInteger(message.seq)
-      ? (value as ServerMessage)
+      ? (value as Extract<ServerMessage, { type: "ack" | "error" }>)
       : null;
   }
   if (
@@ -22,7 +43,32 @@ export function readServerMessage(raw: string): ServerMessage | null {
     !Number.isSafeInteger(message.ack)
   )
     return null;
-  const snapshot = value as Snapshot;
+  let snapshot: Snapshot;
+  if ("mapId" in message && Array.isArray(message.buildingStates)) {
+    const wire = value as WireSnapshot;
+    const map = maps?.get(wire.mapId);
+    if (
+      !map ||
+      wire.buildingStates.length !== map.buildings.length ||
+      !wire.buildingStates.every(
+        (s) =>
+          Array.isArray(s) &&
+          typeof s[0] === "number" &&
+          Number.isFinite(s[0]) &&
+          typeof s[1] === "boolean",
+      )
+    )
+      return null;
+    const fullMap = {
+      ...map,
+      buildings: map.buildings.map((b, i) => ({
+        ...b,
+        hp: wire.buildingStates[i][0],
+        broken: wire.buildingStates[i][1] ? true : undefined,
+      })),
+    };
+    snapshot = { ...wire, world: { ...wire.world, map: fullMap } } as Snapshot;
+  } else snapshot = value as Snapshot;
   if (
     !snapshot.world?.map ||
     !Array.isArray(snapshot.world.entities) ||
@@ -60,6 +106,7 @@ export function connectWorld(options: {
     attempt = 0,
     seq = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  const maps = new Map<MapId, MapDef>();
   const abort = new AbortController();
   const send = (command: Command) => {
     if (
@@ -113,6 +160,7 @@ export function connectWorld(options: {
       const url = new URL("/socket", window.location.href);
       url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const active = new WebSocket(url);
+      maps.clear();
       socket = active;
       active.onopen = () => {
         if (stopped) {
@@ -127,12 +175,13 @@ export function connectWorld(options: {
       active.onmessage = (event: MessageEvent) => {
         if (stopped || socket !== active || typeof event.data !== "string")
           return;
-        const message = readServerMessage(event.data);
+        const message = readServerMessage(event.data, maps);
         if (!message) {
           options.onNotice("Server sent an unsupported message.");
           return;
         }
-        if (message.type === "snapshot") options.onSnapshot(message);
+        if (message.type === "snapshot" && "map" in message.world)
+          options.onSnapshot(message as Snapshot);
         else if (message.type === "error") options.onNotice(message.message);
       };
       active.onerror = () => {

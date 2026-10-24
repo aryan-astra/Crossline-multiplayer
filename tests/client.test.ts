@@ -21,6 +21,39 @@ test("client rejects malformed JSON and incompatible server messages", () => {
   );
 });
 
+test("wire snapshots require cached geometry and matching authoritative building state", () => {
+  const maps = new Map();
+  const snapshot: Record<string, unknown> = {
+    v: 1,
+    type: "snapshot",
+    tick: 1,
+    ack: 0,
+    mapId: "delhi",
+    buildingStates: [],
+    world: { entities: [] },
+    self: { role: "watcher" },
+    predictions: [],
+    rankings: [],
+  };
+  assert.equal(readServerMessage(JSON.stringify(snapshot), maps), null);
+  readServerMessage(
+    JSON.stringify({
+      v: 1,
+      type: "map",
+      map: { id: "delhi", buildings: [{ broken: true }] },
+    }),
+    maps,
+  );
+  assert.equal(readServerMessage(JSON.stringify(snapshot), maps), null);
+  snapshot.buildingStates = [[100, false]];
+  const decoded = readServerMessage(JSON.stringify(snapshot), maps);
+  assert.equal(decoded?.type, "snapshot");
+  if (decoded?.type === "snapshot")
+    assert.equal(decoded.world.map.buildings[0].broken, undefined);
+  snapshot.buildingStates = [["damaged", false]];
+  assert.equal(readServerMessage(JSON.stringify(snapshot), maps), null);
+});
+
 test("same-world tick resets are accepted only after reconnect", () => {
   assert.equal(isStaleSnapshot(4, 100, true, false), true);
   assert.equal(isStaleSnapshot(4, 100, true, true), false);

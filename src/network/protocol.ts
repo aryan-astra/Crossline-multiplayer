@@ -1,8 +1,9 @@
-import type { InputState, MapId, Role, World } from "../game/types";
+import type { InputState, MapDef, MapId, Role, World } from "../game/types";
+import type { AreaId } from "../game/locations";
 
 export const PROTOCOL_VERSION = 1;
 export type Command =
-  | { type: "join"; mapId: MapId; role: Role }
+  | { type: "join"; mapId: MapId; role: Role; areaId?: AreaId }
   | { type: "input"; input: InputState }
   | {
       type: "action";
@@ -92,8 +93,20 @@ export interface Snapshot {
   appointmentIn: number;
   policeTask?: PoliceDispatch;
 }
+export type WireSnapshot = Omit<Snapshot, "world"> & {
+  world: Omit<World, "map">;
+  mapId: MapId;
+  buildingStates: [number, boolean][];
+};
+export interface MapMessage {
+  v: 1;
+  type: "map";
+  map: MapDef;
+}
 export type ServerMessage =
   | Snapshot
+  | WireSnapshot
+  | MapMessage
   | {
       v: 1;
       type: "error" | "ack";
@@ -129,7 +142,12 @@ export function parseMessage(value: unknown): ClientMessage | null {
   let valid = false;
   switch (value.type) {
     case "join":
-      valid = map(value.mapId) && role(value.role);
+      valid =
+        map(value.mapId) &&
+        role(value.role) &&
+        (value.areaId === undefined ||
+          value.areaId === "gathering" ||
+          value.areaId === "approach");
       break;
     case "observe":
       valid = map(value.mapId);

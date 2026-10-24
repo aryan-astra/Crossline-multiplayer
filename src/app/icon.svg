@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <title>FAULTLINE</title>
-  <rect width="64" height="64" rx="12" fill="#101419" />
-  <path
-    d="M12 46 35 16M29 48 52 18"
-    fill="none"
-    stroke="#ffd66d"
-    stroke-width="6"
-    stroke-linecap="square"
-  />
-  <path d="m23 32 5-6m10 12 5-6" stroke="#101419" stroke-width="8" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>Crossline</title><rect width="64" height="64" rx="8" fill="#101214"/><path d="M8 9h13l17 22-8 10zM38 43l8 12h12L45 36z" fill="#f4efe5"/><path d="M44 9h14L21 55H7z" fill="#eab866"/><path d="m25 30 5 6 9-11-5-6z" fill="#101214"/></svg>

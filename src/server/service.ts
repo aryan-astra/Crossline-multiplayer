@@ -17,6 +17,8 @@ import {
   interactObjective,
 } from "../game/world-rules";
 import { MAPS, collideBuildings } from "../game/maps";
+import { entryPoint, type AreaId } from "../game/locations";
+import { prewarmNavigation } from "../game/navigation";
 import type { Entity, InputState, MapId, Role, World } from "../game/types";
 import {
   parseMessage,
@@ -104,6 +106,7 @@ export class GameService {
         }
         w.player = null;
         w.role = "watcher";
+        prewarmNavigation(w.map);
         for (const e of w.entities.filter((e) => e.profileId))
           this.players.set(e.profileId!, {
             input: { ...idle },
@@ -230,10 +233,11 @@ export class GameService {
       }
     }
   }
-  join(id: string, mapId: MapId, role: Role) {
+  join(id: string, mapId: MapId, role: Role, areaId: AreaId = "gathering") {
     if (
       !maps.includes(mapId) ||
-      !["protester", "police", "military", "watcher"].includes(role)
+      !["protester", "police", "military", "watcher"].includes(role) ||
+      !["gathering", "approach"].includes(areaId)
     )
       throw new Error("Invalid location or role");
     if (!this.players.has(id) && this.players.size >= 64)
@@ -324,6 +328,13 @@ export class GameService {
             w.entities.push(character);
           } else {
             const entity = spawnPlayer(w, role, p.name, id);
+            if (entity) {
+              const point = entryPoint(w.map, role, areaId);
+              Object.assign(
+                entity,
+                collideBuildings(w.map, point.x, point.y, 9),
+              );
+            }
             if (entity && p.deathUntil > 0) {
               entity.state = "down";
               entity.hp = 0;
@@ -368,7 +379,7 @@ export class GameService {
   command(id: string, message: ClientMessage) {
     if (!parseMessage(message)) throw new Error("Invalid command");
     if (message.type === "join")
-      return this.join(id, message.mapId, message.role);
+      return this.join(id, message.mapId, message.role, message.areaId);
     if (message.type === "input") return this.input(id, message.input);
     if (message.type === "ping") return;
     if (!this.players.get(id)?.connected) throw new Error("Join a world first");

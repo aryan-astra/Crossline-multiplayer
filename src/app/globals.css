@@ -2,12 +2,12 @@
 
 :root {
   color-scheme: dark;
-  --bg: #141b1b;
-  --panel: #1b2423;
-  --line: #34413b;
-  --cream: #e8e7d9;
-  --muted: #a5aea2;
-  --accent: #d2e59d;
+  --bg: #101214;
+  --panel: #171a1d;
+  --line: #454950;
+  --cream: #f4efe5;
+  --muted: #b8b7b1;
+  --accent: #eab866;
 }
 * {
   box-sizing: border-box;
@@ -73,7 +73,7 @@ input {
 }
 .primary {
   background: var(--accent);
-  color: #1c281d;
+  color: #101214;
   border: 0;
   padding: 16px 26px;
   font-size: 13px;
@@ -89,7 +89,8 @@ input {
   --line: #454950;
   --cream: #f0f0ee;
   --muted: #b3b5b9;
-  --accent: #e0dfd5;
+  --accent: #eab866;
+  font-family: "Barlow", sans-serif;
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -132,6 +133,11 @@ input {
 .game-top b {
   font-size: 18px;
   letter-spacing: -0.5px;
+}
+.game-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .game-top span {
   font: 9px monospace;

@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  applicationName: "FAULTLINE",
-  title: "FAULTLINE — Crowd Command",
+  applicationName: "Crossline",
+  title: "Crossline — Crowd Command",
   description:
     "A persistent multiplayer urban crowd simulation. Choose a side. Read the crowd. Hold the line.",
 };

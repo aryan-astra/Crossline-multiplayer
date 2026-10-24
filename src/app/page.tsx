@@ -1,409 +1,496 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import GameScreen from "@/components/GameScreen";
+import { AREAS, type AreaId } from "@/game/locations";
 import type { MapId, Role } from "@/game/types";
 import type { Profile } from "@/network/protocol";
 import "./menu.css";
 
-const locations = [
+const cities = [
   {
     id: "delhi" as const,
-    name: "Delhi · Jantar Mantar",
-    landmark: "Jantar Mantar / New Delhi",
+    name: "New Delhi",
+    area: "Jantar Mantar",
     image: "/img/crossline-delhi.png",
-    atmosphere: "Warm. Dusty. Restless.",
     description:
-      "Red sandstone sundials, walled gardens and narrow gates. A gathering finds its voice in the observatory quarter.",
-    color: "#f6a45f",
+      "Sandstone observatories. Narrow streets. A gathering finding its voice.",
   },
   {
     id: "paris" as const,
-    name: "Paris · Place de la République",
-    landmark: "Place de la République / Paris",
+    name: "Paris",
+    area: "Place de la République",
     image: "/img/crossline-paris.png",
-    atmosphere: "Blue hour. All eyes on the square.",
-    description:
-      "Café lights, broad boulevards and a monument above the crowd. An open square with nowhere to hide.",
-    color: "#8bbde9",
+    description: "Broad boulevards. Café lights. All eyes on the square.",
   },
 ];
-const roles = [
+const roles: {
+  id: Role;
+  name: string;
+  description: string;
+  control: string;
+}[] = [
   {
-    id: "protester" as const,
+    id: "protester",
     name: "Protester",
-    image: "/img/crossline-protester.png",
-    color: "#f2a064",
-    tag: "Hold your ground",
-    description:
-      "March with the crowd. Raise morale, collect supplies and decide how far you are willing to go.",
-    control: "E to chant",
+    description: "Join the crowd. Chant, gather supplies and hold the square.",
+    control: "E to chant · F to interact",
   },
   {
-    id: "police" as const,
+    id: "police",
     name: "Police",
-    image: "/img/crossline-police.png",
-    color: "#83b7f0",
-    tag: "Hold the line",
     description:
-      "Command a formation, respond to violent actors and bring suspects into custody.",
+      "Lead your formation. Protect the square and detain active threats.",
     control: "E to detain · C to command",
   },
   {
-    id: "military" as const,
-    name: "Military",
-    image: "/img/crossline-military.png",
-    color: "#b2c184",
-    tag: "Know your limits",
-    description:
-      "Watch the perimeter. Warn first. Strict engagement rules apply to you and every military bot.",
-    control: "Q to warn · E to engage",
-  },
-  {
-    id: "watcher" as const,
+    id: "watcher",
     name: "Spectator",
-    image: "/img/crossline-watcher.png",
-    color: "#c4a4e6",
-    tag: "Read the city",
-    description:
-      "See the bigger picture. Trade the fictional market, predict outcomes and send in supplies.",
+    description: "Watch freely. Trade the virtual market and fund deliveries.",
     control: "Free camera · Markets & supplies",
   },
+  {
+    id: "military",
+    name: "Military",
+    description: "Earn a temporary appointment through police performance.",
+    control: "Appointment required",
+  },
+];
+const steps = ["Name", "City", "Area", "Role"];
+const headings = [
+  "Make yourself known.",
+  "Choose your city.",
+  "Find your way in.",
+  "Where do you stand?",
+];
+const descriptions = [
+  "One callsign. Your place in the crowd.",
+  "Two real street layouts. Two different kinds of tension.",
+  "Choose an entry area for a new character. Saved characters resume where they left off.",
+  "One shared city. Every role changes how you play.",
 ];
 
 export default function Home() {
   const [mapId, setMapId] = useState<MapId>("delhi");
+  const [areaId, setAreaId] = useState<AreaId>("gathering");
   const [role, setRole] = useState<Role>("protester");
   const [name, setName] = useState("");
+  const [step, setStep] = useState(-1);
+  const [guide, setGuide] = useState(false);
+  const [error, setError] = useState("");
   const [playing, setPlaying] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [connectionAttempt, setConnectionAttempt] = useState(0);
-  const [connectionFailed, setConnectionFailed] = useState(false);
-  const [serverStatus, setServerStatus] = useState(
-    "Connecting to public world…",
+  const [attempt, setAttempt] = useState(0);
+  const [connection, setConnection] = useState<"loading" | "ready" | "error">(
+    "loading",
   );
+  const heading = useRef<HTMLHeadingElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/session", { cache: "no-store" })
+    let active = true;
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 10000);
+    fetch("/api/session", { cache: "no-store", signal: abort.signal })
       .then(async (response) => {
-        if (!response.ok) throw new Error("Server unavailable");
+        if (!response.ok) throw new Error("Connection unavailable");
         const data = (await response.json()) as { profile: Profile };
-        if (!cancelled) {
+        if (active && !abort.signal.aborted) {
           setProfile(data.profile);
-          setName(data.profile.name);
-          setServerStatus("Persistent public world");
+          setName(
+            (current) =>
+              current ||
+              (data.profile.name === "Guest" ? "" : data.profile.name),
+          );
+          setConnection("ready");
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setServerStatus("Connection unavailable");
-          setConnectionFailed(true);
-        }
-      });
+        if (active) setConnection("error");
+      })
+      .finally(() => clearTimeout(timeout));
     return () => {
-      cancelled = true;
+      active = false;
+      clearTimeout(timeout);
+      abort.abort();
     };
-  }, [playing, connectionAttempt]);
+  }, [attempt, playing]);
+
+  useEffect(() => {
+    if (step >= 0 || guide) heading.current?.focus();
+  }, [step, guide]);
+
+  const advance = (event: FormEvent) => {
+    event.preventDefault();
+    if (name.trim().length < 2) {
+      setStep(0);
+      setError("Use a callsign with 2–24 characters.");
+      nameInput.current?.focus();
+      return;
+    }
+    setError("");
+    if (step < 3) setStep(step + 1);
+    else if (!profile || connection !== "ready")
+      setError(
+        "The server is unavailable. Use Retry connection below, then try again.",
+      );
+    else setPlaying(true);
+  };
+  const openSetup = () => {
+    setGuide(false);
+    setStep((current) => Math.max(0, current));
+    setError("");
+  };
+  const city = cities.find((item) => item.id === mapId)!;
+  const selectedRole = roles.find((item) => item.id === role)!;
+  const selectedArea = AREAS[mapId].find((item) => item.id === areaId)!;
+  const panelOpen = step >= 0 || guide;
+
   if (playing)
     return (
       <GameScreen
         mapId={mapId}
+        areaId={areaId}
         role={role}
         name={name.trim()}
-        onExit={() => setPlaying(false)}
+        onExit={() => {
+          setPlaying(false);
+          setStep(3);
+        }}
       />
     );
-  const location = locations.find((item) => item.id === mapId)!;
-  const selectedRole = roles.find((item) => item.id === role)!;
 
   return (
-    <main className="crossline-menu">
-      <header className="crossline-header">
-        <Link href="/" className="crossline-logo" aria-label="Faultline home">
-          <span aria-hidden="true">╱╱</span> FAULTLINE
+    <main className={`game-lobby ${panelOpen ? "setup-open" : ""}`}>
+      <Image
+        className="lobby-art"
+        src="/img/crossline-hero.png"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+      />
+      <div className="lobby-shade" />
+      <header className="lobby-header">
+        <Link
+          href="/"
+          className="lobby-brand"
+          aria-label="Crossline title screen"
+        >
+          <Image
+            src="/brand/crossline-mark.svg"
+            width={32}
+            height={32}
+            alt=""
+          />{" "}
+          CROSSLINE
         </Link>
-        <nav aria-label="Main navigation">
-          <a href="#locations">The locations</a>
-          <a href="#roles">Choose your side</a>
-          <a href="#field-guide">Field guide</a>
+        <nav aria-label="Game menu">
+          <button
+            className="lobby-nav"
+            aria-current={!guide ? "page" : undefined}
+            onClick={openSetup}
+          >
+            Play
+          </button>
+          <button
+            className="lobby-nav"
+            aria-current={guide ? "page" : undefined}
+            onClick={() => setGuide(true)}
+          >
+            Field guide
+          </button>
         </nav>
-        <span className="practice-status">
-          <i /> {serverStatus}
-        </span>
-        {connectionFailed && (
-          <button
-            type="button"
-            onClick={() => {
-              setConnectionFailed(false);
-              setServerStatus("Connecting to public world…");
-              setConnectionAttempt((value) => value + 1);
-            }}
-          >
-            Retry connection
-          </button>
-        )}
       </header>
-      <section className="crossline-hero" aria-labelledby="game-title">
-        <Image
-          className="hero-art"
-          src="/img/crossline-hero.png"
-          alt="Pixel-art crowds gather along a lamp-lit city boulevard, facing a distant police line."
-          fill
-          priority
-          sizes="100vw"
-        />
-        <div className="hero-shade" />
-        <div className="hero-content">
-          <div className="hero-heading">
-            <span className="street-sticker">Every street has two sides</span>
-            <h1 id="game-title">
-              FAULTLINE<span>CROWD COMMAND</span>
-            </h1>
-            <p>
-              A city on the edge. A crowd with a mind of its own.
-              <br />
-              Pick your side. Step into the street.
-            </p>
-            <div className="hero-facts">
-              <span>
-                <b>Live</b> autonomous crowds
-              </span>
-              <span>
-                <b>4</b> perspectives
-              </span>
-              <span>
-                <b>One</b> continuous public world
-              </span>
+      <div className="lobby-main">
+        <section className="lobby-intro" aria-labelledby="game-title">
+          <p className="lobby-kicker">A city in the balance</p>
+          <h1 id="game-title">CROSSLINE</h1>
+          <span className="lobby-subtitle">CROWD COMMAND</span>
+          <p className="lobby-description">
+            The street is alive.
+            <br />
+            Pick a side. Find your people.
+            <br />
+            Decide where you draw the line.
+          </p>
+          {!panelOpen && (
+            <div className="lobby-actions">
+              <button className="lobby-primary" onClick={openSetup}>
+                Start playing <span aria-hidden="true">→</span>
+              </button>
+              <button className="lobby-nav" onClick={() => setGuide(true)}>
+                How to play
+              </button>
             </div>
-          </div>
+          )}
+          <p className="lobby-credit">
+            Multiplayer crowd simulation · Fictional events
+          </p>
+        </section>
+        {guide ? (
+          <section className="setup-pane" aria-labelledby="setup-heading">
+            <div className="setup-content">
+              <p className="lobby-kicker">Field guide</p>
+              <h2 id="setup-heading" ref={heading} tabIndex={-1}>
+                The city keeps moving.
+              </h2>
+              <p className="setup-description">
+                Your controls change with your role. The server owns the shared
+                world; settings pause your input, not the city.
+              </p>
+              <dl className="guide-controls">
+                <dt>WASD / arrows</dt>
+                <dd>
+                  Move. Hold Shift to run. Touch controls appear on small
+                  screens.
+                </dd>
+                <dt>E / Space</dt>
+                <dd>
+                  Chant as a protester. Detain an active threat as police.
+                </dd>
+                <dt>F / B</dt>
+                <dd>
+                  Collect essentials or interact with the objective. Enter or
+                  leave near a doorway.
+                </dd>
+                <dt>Spectator</dt>
+                <dd>
+                  Pan and zoom freely. Open Markets & supplies to trade, predict
+                  outcomes or fund a delivery.
+                </dd>
+                <dt>Military</dt>
+                <dd>
+                  Earn an appointment through police performance. A warning and
+                  an immediate serious threat are required to engage.
+                </dd>
+              </dl>
+              <p className="setup-note">
+                All money is fictional credit. Progress is tied to this
+                browser’s guest identity. Buildings use OpenStreetMap
+                footprints; art, interiors and events are illustrative.
+              </p>
+            </div>
+            <div className="setup-bottom">
+              <button
+                className="lobby-secondary"
+                onClick={() => setGuide(false)}
+              >
+                Back
+              </button>
+              <button className="lobby-primary" onClick={openSetup}>
+                Choose your side →
+              </button>
+            </div>
+          </section>
+        ) : step >= 0 ? (
           <form
-            className="registration"
-            onSubmit={(event) => {
-              event.preventDefault();
-              document.getElementById("locations")?.scrollIntoView({
-                behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-                  .matches
-                  ? "auto"
-                  : "smooth",
-                block: "start",
-              });
-            }}
+            className="setup-pane"
+            onSubmit={advance}
+            noValidate
+            aria-labelledby="setup-heading"
           >
-            <span className="step-label">01 / Report in</span>
-            <h2>
-              Your city.
-              <br />
-              Your callsign.
-            </h2>
-            <p>The crowd is gathering. Make yourself known.</p>
-            <label htmlFor="callsign">Callsign</label>
-            <input
-              id="callsign"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-              minLength={2}
-              maxLength={24}
-              placeholder="Enter your callsign…"
-              autoComplete="off"
-            />
-            <button className="launch-button" type="submit">
-              Join the streets <span aria-hidden="true">↗</span>
-            </button>
-            <p className="registration-note">
-              Guest identity saved in this browser. Military appointments are
-              earned.
-            </p>
-          </form>
-        </div>
-        <div className="hero-caption">
-          <span>One crowd. Countless intentions.</span>
-          <span>Delhi / Paris · Illustrated scenes</span>
-        </div>
-      </section>
-      <div className="menu-body">
-        <section
-          id="locations"
-          className="location-section"
-          aria-labelledby="location-title"
-        >
-          <div className="menu-section-heading">
-            <div>
-              <span className="step-label">02 / Choose your theatre</span>
-              <h2 id="location-title">Every city has a breaking point.</h2>
-            </div>
-            <p>Two cities. Different streets. The same tension.</p>
-          </div>
-          <div className="illustrated-locations">
-            {locations.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={`illustrated-location ${mapId === item.id ? "is-selected" : ""}`}
-                style={{ "--card-accent": item.color } as React.CSSProperties}
-                aria-pressed={mapId === item.id}
-                onClick={() => setMapId(item.id)}
-              >
-                <Image
-                  src={item.image}
-                  alt=""
-                  fill
-                  sizes="(max-width: 480px) 100vw, 50vw"
-                />
-                <span className="location-shade" />
-                <span className="location-atmosphere">{item.atmosphere}</span>
-                <span className="selection-badge">
-                  {mapId === item.id ? "✓ Selected" : "Select location"}
-                </span>
-                <span className="location-copy">
-                  <span>{item.landmark}</span>
-                  <h3>{item.name}</h3>
-                  <p>{item.description}</p>
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="muted">
-            Playable streets and building footprints follow OpenStreetMap data.
-            Artwork, interiors, security positions and events are fictional.
-          </p>
-        </section>
-        <section
-          id="roles"
-          className="role-section"
-          aria-labelledby="role-title"
-        >
-          <div className="menu-section-heading">
-            <div>
-              <span className="step-label">03 / Choose your side</span>
-              <h2 id="role-title">Where do you stand?</h2>
-            </div>
-            <p>Same city. Four very different stories.</p>
-          </div>
-          <div className="illustrated-roles">
-            {roles.map((item) => (
-              <button
-                type="button"
-                key={item.id}
-                className={`illustrated-role ${role === item.id ? "is-selected" : ""}`}
-                style={{ "--card-accent": item.color } as React.CSSProperties}
-                aria-pressed={role === item.id}
-                disabled={item.id === "military" && !profile?.appointmentUntil}
-                onClick={() => setRole(item.id)}
-              >
-                <span className="role-portrait">
-                  <Image
-                    src={item.image}
-                    alt=""
-                    fill
-                    sizes="(max-width: 750px) 50vw, 25vw"
+            <ol className="setup-progress" aria-label="Player setup progress">
+              {steps.map((label, index) => (
+                <li
+                  key={label}
+                  aria-current={index === step ? "step" : undefined}
+                >
+                  {index + 1}. {label}
+                </li>
+              ))}
+            </ol>
+            <div className="setup-content" key={step}>
+              <h2 id="setup-heading" ref={heading} tabIndex={-1}>
+                {headings[step]}
+              </h2>
+              <p className="setup-description">{descriptions[step]}</p>
+              {step === 0 && (
+                <>
+                  <label className="lobby-field-label" htmlFor="callsign">
+                    Callsign
+                  </label>
+                  <input
+                    className="lobby-name"
+                    ref={nameInput}
+                    id="callsign"
+                    value={name}
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      if (error) setError("");
+                    }}
+                    minLength={2}
+                    maxLength={24}
+                    required
+                    autoComplete="nickname"
+                    placeholder="What should we call you?"
+                    aria-describedby="name-help setup-error"
+                    aria-invalid={!!error}
                   />
-                  <span className="portrait-shade" />
-                  <span className="role-selection">
-                    {item.id === "military" && !profile?.appointmentUntil
-                      ? "Earn a police appointment"
-                      : role === item.id
-                        ? "✓ Selected"
-                        : "+ Choose role"}
-                  </span>
-                </span>
-                <span className="role-copy">
-                  <span className="role-tag">{item.tag}</span>
-                  <h3>{item.name}</h3>
-                  <p>{item.description}</p>
-                  <span className="role-controls">{item.control}</span>
-                </span>
+                  <p className="setup-note" id="name-help">
+                    2–24 characters. Your guest profile is saved in this
+                    browser.
+                  </p>
+                </>
+              )}
+              {step === 1 && (
+                <fieldset>
+                  <legend>City</legend>
+                  <div className="setup-options">
+                    {cities.map((item) => (
+                      <label className="setup-choice" key={item.id}>
+                        <input
+                          type="radio"
+                          name="city"
+                          value={item.id}
+                          checked={mapId === item.id}
+                          onChange={() => {
+                            setMapId(item.id);
+                            setAreaId("gathering");
+                          }}
+                        />
+                        <span className="choice-thumb">
+                          <Image src={item.image} alt="" fill sizes="80px" />
+                        </span>
+                        <span>
+                          <strong>{item.name}</strong>
+                          <small>{item.area}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="setup-note">{city.description}</p>
+                </fieldset>
+              )}
+              {step === 2 && (
+                <fieldset>
+                  <legend>Entry area</legend>
+                  <div className="setup-options">
+                    {AREAS[mapId].map((item) => (
+                      <label className="setup-choice" key={item.id}>
+                        <input
+                          type="radio"
+                          name="area"
+                          value={item.id}
+                          checked={areaId === item.id}
+                          onChange={() => setAreaId(item.id)}
+                        />
+                        <span>
+                          <strong>{item.name}</strong>
+                          <small>{item.description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+              {step === 3 && (
+                <>
+                  <fieldset>
+                    <legend>Role</legend>
+                    <div className="setup-options role-options">
+                      {roles.map((item) => (
+                        <label className="setup-choice" key={item.id}>
+                          <input
+                            type="radio"
+                            name="role"
+                            value={item.id}
+                            checked={role === item.id}
+                            disabled={
+                              item.id === "military" &&
+                              !profile?.appointmentUntil
+                            }
+                            onChange={() => setRole(item.id)}
+                          />
+                          <span>
+                            <strong>{item.name}</strong>
+                            <small>
+                              {item.id === "military" &&
+                              !profile?.appointmentUntil
+                                ? "Earn a police appointment"
+                                : item.control}
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <p className="setup-note">{selectedRole.description}</p>
+                </>
+              )}
+              {step > 0 && (
+                <div className="setup-review">
+                  <button type="button" onClick={() => setStep(0)}>
+                    {name}
+                  </button>
+                  <span>/</span>
+                  <button type="button" onClick={() => setStep(1)}>
+                    {city.name}
+                  </button>
+                  {step >= 3 && (
+                    <>
+                      <span>/</span>
+                      <button type="button" onClick={() => setStep(2)}>
+                        {selectedArea.name}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              <p className="setup-error" id="setup-error" role="status">
+                {error}
+              </p>
+            </div>
+            <div className="setup-bottom">
+              <button
+                type="button"
+                className="lobby-secondary"
+                onClick={() => {
+                  setStep(step - 1);
+                  setError("");
+                }}
+              >
+                Back
               </button>
-            ))}
+              <button className="lobby-primary" type="submit">
+                {step === 3 ? "Enter the city" : "Continue"}{" "}
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="lobby-scene-caption">
+            <strong>Every street has two sides.</strong>
+            <span>New Delhi / Paris</span>
           </div>
-        </section>
-        <section
-          className="deployment-bar"
-          aria-label="Deploy to your chosen location"
-        >
-          <div>
-            <span className="step-label">Your operation</span>
-            <h2>
-              {location.name}
-              <span> / {selectedRole.name}</span>
-            </h2>
-            <p>
-              {name.trim().length >= 2
-                ? `Ready when you are, ${name.trim()}.`
-                : "Enter your callsign above to begin."}
-            </p>
-          </div>
-          <button
-            className="launch-button"
-            disabled={name.trim().length < 2 || !profile}
-            onClick={() => setPlaying(true)}
-          >
-            Enter the city <span aria-hidden="true">↗</span>
-          </button>
-          <p className="practice-explanation">
-            Saved profile · {profile?.credits ?? "—"} fictional credits. The
-            world continues when you leave.
-          </p>
-        </section>
-        <section
-          id="field-guide"
-          className="field-guide"
-          aria-labelledby="field-guide-title"
-        >
-          <div>
-            <span className="step-label">Field intel</span>
-            <h2 id="field-guide-title">The crowd doesn’t wait for you.</h2>
-            <p>
-              Personalities collide. Lines shift. A quiet square can change in
-              seconds.
-            </p>
-          </div>
-          <div className="intel-list">
-            <article>
-              <span aria-hidden="true">◉</span>
-              <div>
-                <h3>A mind behind every movement</h3>
-                <p>
-                  Agents march, chant, flee and respond to danger according to
-                  their own courage, aggression and discipline.
-                </p>
-              </div>
-            </article>
-            <article>
-              <span aria-hidden="true">⌘</span>
-              <div>
-                <h3>Command carries consequences</h3>
-                <p>
-                  Move your officers into formation. Detain nearby threats.
-                  Military engagement requires a warning and an imminent serious
-                  threat.
-                </p>
-              </div>
-            </article>
-            <article>
-              <span aria-hidden="true">↗</span>
-              <div>
-                <h3>Watch more than the street</h3>
-                <p>
-                  Persistent markets react to tension and damage. Fund a side
-                  and a supply truck physically delivers crates into the city.
-                </p>
-              </div>
-            </article>
-          </div>
-        </section>
-        <footer className="crossline-footer">
-          <Link href="/" className="crossline-logo">
-            <span aria-hidden="true">╱╱</span> FAULTLINE
-          </Link>
-          <p>A city in the balance.</p>
-          <a href="https://github.com/aryan-astra/Crossline-multiplayer">
-            Project on GitHub ↗
-          </a>
-        </footer>
+        )}
       </div>
+      <footer className="lobby-footer">
+        <span className="lobby-server" data-state={connection} role="status">
+          {connection === "ready"
+            ? "Server connected"
+            : connection === "loading"
+              ? "Connecting to the city…"
+              : "Server unavailable"}
+          {connection === "error" && (
+            <button
+              onClick={() => {
+                setConnection("loading");
+                setAttempt((value) => value + 1);
+              }}
+            >
+              Retry connection
+            </button>
+          )}
+        </span>
+        <span>
+          {profile
+            ? `${profile.credits} virtual credits · Guest profile`
+            : "No account required"}
+        </span>
+      </footer>
     </main>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { buildGround, drawFrame, drawMinimap } from "@/game/render";
 import {
   cameraZoom,
@@ -10,6 +11,7 @@ import {
 } from "@/game/camera";
 import { interactionPrompt } from "@/game/prompts";
 import { DirectionalEventAudio } from "@/game/audio";
+import { entryPoint, type AreaId } from "@/game/locations";
 import { connectWorld, isStaleSnapshot } from "@/network/client";
 import type { Command, Snapshot } from "@/network/protocol";
 import type { InputState, MapId, Role, World } from "@/game/types";
@@ -36,11 +38,13 @@ type Panel = "settings" | "guide" | "rankings" | null;
 
 export default function GameScreen({
   mapId,
+  areaId = "gathering",
   role,
   name,
   onExit,
 }: {
   mapId: MapId;
+  areaId?: AreaId;
   role: Role;
   name: string;
   onExit: () => void;
@@ -161,6 +165,7 @@ export default function GameScreen({
         type: "join",
         mapId: latest.current?.self.mapId ?? mapId,
         role: latest.current?.self.role ?? role,
+        areaId,
       }),
       onStatus: (next) => {
         if (!stopped) {
@@ -232,7 +237,7 @@ export default function GameScreen({
       connection.close();
       sendRef.current = () => false;
     };
-  }, [mapId, role, name]);
+  }, [mapId, role, name, areaId]);
 
   useEffect(() => {
     const view = canvas.current!,
@@ -295,7 +300,7 @@ export default function GameScreen({
           : null;
         const cam = camera.current;
         if (shownMap !== w.map.id || shownRole !== actualRole) {
-          const point = player ?? w.objective ?? w.map.rallyPoints[0];
+          const point = player ?? entryPoint(w.map, actualRole, areaId);
           cam.x = point.x;
           cam.y = point.y;
           cam.zoom = cameraZoom(actualRole);
@@ -442,7 +447,7 @@ export default function GameScreen({
       document.removeEventListener("visibilitychange", clear);
       view.removeEventListener("wheel", wheel);
     };
-  }, []);
+  }, [areaId]);
 
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef({
@@ -599,7 +604,15 @@ export default function GameScreen({
       />
       <header className="game-top">
         <div>
-          <b>FAULTLINE</b>
+          <b className="game-brand">
+            <Image
+              src="/brand/crossline-mark.svg"
+              width={24}
+              height={24}
+              alt=""
+            />{" "}
+            CROSSLINE
+          </b>
           <span>
             {w?.map.name ?? "Entering public world"} /{" "}
             {actualRole === "watcher" ? "SPECTATOR" : actualRole.toUpperCase()}

@@ -1,6 +1,6 @@
-# FAULTLINE
+# Crossline — Crowd Command
 
-Persistent multiplayer browser crowd simulation, evolved from the Crossline integration of STREETS / Crowd Command and FLASHPOINT / Rally Lines. FAULTLINE is the provisional name; the GitHub repository remains Crossline-multiplayer.
+Persistent multiplayer browser crowd simulation integrating STREETS / Crowd Command and FLASHPOINT / Rally Lines. Earlier engineering documents use the provisional name FAULTLINE.
 
 ## Run
 
@@ -17,7 +17,7 @@ Set HOST=0.0.0.0 intentionally for LAN play and use the host's LAN address. Sepa
 
 ## Play
 
-Choose Jantar Mantar, New Delhi or Place de la République, Paris. WASD/arrows move, Shift sprints, E/Space is the role's primary action, Q secondary, T supplied police gas. F collects essentials or interacts with the Constitution Book. B enters/exits near a doorway. C then click commands police. Spectators pan/zoom, inspect/follow people, trade, predict outcomes or fund deliveries. Touch controls are included. Settings suspend your input; the public world continues.
+The title screen and name → city → entry area → role setup stay in one viewport. Choose Jantar Mantar, New Delhi or Place de la République, Paris. Entry areas place new characters only; saved characters resume in place. WASD/arrows move, Shift sprints, E/Space is the role's primary action, Q secondary, T supplied police gas. F collects essentials or interacts with the Constitution Book. B enters/exits near a doorway. C then click commands police. Spectators pan/zoom, inspect/follow people, trade, predict outcomes or fund deliveries. Touch controls are included. Settings suspend your input; the public world continues.
 
 Military appointments are temporary and earned through police performance. Death requires a 30-second wait and explicit protester/police respawn choice. Custody is temporary. New guests receive 69 persistent fictional credits once; life allowance is separate. No real money or payment system exists.
 

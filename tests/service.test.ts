@@ -12,9 +12,35 @@ import {
 } from "../src/game/world-rules";
 import { createWorld, spawnSupply } from "../src/game/engine";
 import { MAPS } from "../src/game/maps";
+import type { AreaId } from "../src/game/locations";
 import type { ClientMessage, Command } from "../src/network/protocol";
 
 let sequence = 0;
+
+test("entry area controls a new spawn but cannot teleport a returning character", () => {
+  const store = new Store(":memory:");
+  try {
+    const service = new GameService(store);
+    const id = store.createGuest("New arrival").profile.id;
+    service.join(id, "paris", "police", "approach");
+    const w = service.worlds.paris;
+    const person = w.entities.find((entity) => entity.profileId === id)!;
+    assert.equal(person.x, w.map.checkpoints[1].x);
+    assert.equal(person.y, w.map.checkpoints[1].y);
+    const credits = store.profile(id).credits;
+    service.disconnect(id);
+    service.join(id, "paris", "police", "gathering");
+    assert.equal(person.x, w.map.checkpoints[1].x);
+    assert.equal(person.y, w.map.checkpoints[1].y);
+    assert.equal(store.profile(id).credits, credits);
+    assert.throws(
+      () => service.join(id, "paris", "police", "roof" as AreaId),
+      /Invalid/,
+    );
+  } finally {
+    store.close();
+  }
+});
 
 test("legacy map upgrade preserves profiles and event receipts while moving geometry", () => {
   const store = new Store(":memory:");
