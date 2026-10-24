@@ -1,79 +1,64 @@
 import type { Entity, MapDef } from "./types";
-import { collideBuildings } from "./maps";
+import { collideBuildings, isWalkable } from "./maps";
 
 const CELL = 40;
+type Point = { x: number; y: number };
 const grids = new WeakMap<
   MapDef,
   { cols: number; rows: number; open: Uint8Array; edges: number[][] }
 >();
+
+const distance2 = (a: Point, b: Point) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+
+function pointSegment(p: Point, u: Point, v: Point): Point {
+  const dx = v.x - u.x,
+    dy = v.y - u.y;
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((p.x - u.x) * dx + (p.y - u.y) * dy) / (dx * dx + dy * dy || 1),
+    ),
+  );
+  return { x: u.x + dx * t, y: u.y + dy * t };
+}
+
+const orientation = (p: Point, q: Point, r: Point) =>
+  (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+const onSegment = (p: Point, q: Point, r: Point) =>
+  r.x >= Math.min(p.x, q.x) - 1e-8 &&
+  r.x <= Math.max(p.x, q.x) + 1e-8 &&
+  r.y >= Math.min(p.y, q.y) - 1e-8 &&
+  r.y <= Math.max(p.y, q.y) + 1e-8;
+
+function segmentDistance2(u: Point, v: Point, p: Point, q: Point) {
+  const a1 = orientation(u, v, p),
+    a2 = orientation(u, v, q);
+  const b1 = orientation(p, q, u),
+    b2 = orientation(p, q, v);
+  if (
+    (((a1 > 0 && a2 < 0) || (a1 < 0 && a2 > 0)) &&
+      ((b1 > 0 && b2 < 0) || (b1 < 0 && b2 > 0))) ||
+    (Math.abs(a1) < 1e-8 && onSegment(u, v, p)) ||
+    (Math.abs(a2) < 1e-8 && onSegment(u, v, q)) ||
+    (Math.abs(b1) < 1e-8 && onSegment(p, q, u)) ||
+    (Math.abs(b2) < 1e-8 && onSegment(p, q, v))
+  )
+    return 0;
+  return Math.min(
+    distance2(u, pointSegment(u, p, q)),
+    distance2(v, pointSegment(v, p, q)),
+    distance2(p, pointSegment(p, u, v)),
+    distance2(q, pointSegment(q, u, v)),
+  );
+}
 
 function clear(
   map: MapDef,
   a: { x: number; y: number },
   b: { x: number; y: number },
 ) {
-  const d2 = (p: { x: number; y: number }, q: { x: number; y: number }) =>
-    (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
-  const pointSegment = (
-    p: { x: number; y: number },
-    u: { x: number; y: number },
-    v: { x: number; y: number },
-  ) => {
-    const dx = v.x - u.x,
-      dy = v.y - u.y;
-    const t = Math.max(
-      0,
-      Math.min(
-        1,
-        ((p.x - u.x) * dx + (p.y - u.y) * dy) / (dx * dx + dy * dy || 1),
-      ),
-    );
-    return { x: u.x + dx * t, y: u.y + dy * t };
-  };
-  const orientation = (
-    p: { x: number; y: number },
-    q: { x: number; y: number },
-    r: { x: number; y: number },
-  ) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
-  const onSegment = (
-    p: { x: number; y: number },
-    q: { x: number; y: number },
-    r: { x: number; y: number },
-  ) =>
-    r.x >= Math.min(p.x, q.x) - 1e-8 &&
-    r.x <= Math.max(p.x, q.x) + 1e-8 &&
-    r.y >= Math.min(p.y, q.y) - 1e-8 &&
-    r.y <= Math.max(p.y, q.y) + 1e-8;
-  const segmentDistance2 = (
-    u: { x: number; y: number },
-    v: { x: number; y: number },
-    p: { x: number; y: number },
-    q: { x: number; y: number },
-  ) => {
-    const a1 = orientation(u, v, p),
-      a2 = orientation(u, v, q),
-      b1 = orientation(p, q, u),
-      b2 = orientation(p, q, v);
-    if (
-      (((a1 > 0 && a2 < 0) || (a1 < 0 && a2 > 0)) &&
-        ((b1 > 0 && b2 < 0) || (b1 < 0 && b2 > 0))) ||
-      (Math.abs(a1) < 1e-8 && onSegment(u, v, p)) ||
-      (Math.abs(a2) < 1e-8 && onSegment(u, v, q)) ||
-      (Math.abs(b1) < 1e-8 && onSegment(p, q, u)) ||
-      (Math.abs(b2) < 1e-8 && onSegment(p, q, v))
-    )
-      return 0;
-    return Math.min(
-      d2(u, pointSegment(u, p, q)),
-      d2(v, pointSegment(v, p, q)),
-      d2(p, pointSegment(p, u, v)),
-      d2(q, pointSegment(q, u, v)),
-    );
-  };
-  if (
-    d2(a, collideBuildings(map, a.x, a.y, 9)) > 1e-4 ||
-    d2(b, collideBuildings(map, b.x, b.y, 9)) > 1e-4
-  )
+  if (!isWalkable(map, a.x, a.y, 9) || !isWalkable(map, b.x, b.y, 9))
     return false;
   for (const block of map.buildings) {
     if (
@@ -99,12 +84,46 @@ function clear(
   return true;
 }
 
+/** Build the static walk graph before the first simulation tick. */
+export function prewarmNavigation(map: MapDef): void {
+  if (grids.has(map)) return;
+  const cols = Math.ceil(map.w / CELL),
+    rows = Math.ceil(map.h / CELL);
+  const open = new Uint8Array(cols * rows);
+  const center = (i: number) => ({
+    x: ((i % cols) + 0.5) * CELL,
+    y: (Math.floor(i / cols) + 0.5) * CELL,
+  });
+  for (let i = 0; i < open.length; i++) {
+    const { x, y } = center(i);
+    open[i] = Number(
+      x < map.w - 10 && y < map.h - 10 && isWalkable(map, x, y, 9),
+    );
+  }
+  const edges: number[][] = Array.from({ length: open.length }, () => []);
+  for (let i = 0; i < open.length; i++) {
+    if (!open[i]) continue;
+    const neighbors = [i + cols];
+    if (i % cols < cols - 1) neighbors.push(i + 1);
+    for (const j of neighbors)
+      if (j < open.length && open[j] && clear(map, center(i), center(j))) {
+        edges[i].push(j);
+        edges[j].push(i);
+      }
+  }
+  grids.set(map, { cols, rows, open, edges });
+}
+
 export function nextWaypoint(
   map: MapDef,
   e: Entity,
   x: number,
   y: number,
 ): { x: number; y: number } {
+  if (!isWalkable(map, e.x, e.y, 9)) {
+    Object.assign(e, collideBuildings(map, e.x, e.y, 9));
+    e.path = undefined;
+  }
   const target = collideBuildings(map, x, y, 9);
   if (clear(map, e, target)) {
     e.path = undefined;
@@ -115,56 +134,43 @@ export function nextWaypoint(
     !e.pathTarget ||
     Math.hypot(e.pathTarget.x - x, e.pathTarget.y - y) > CELL / 2
   ) {
-    let grid = grids.get(map);
-    if (!grid) {
-      const cols = Math.ceil(map.w / CELL),
-        rows = Math.ceil(map.h / CELL);
-      const open = new Uint8Array(cols * rows);
-      for (let i = 0; i < open.length; i++) {
-        const cx = ((i % cols) + 0.5) * CELL,
-          cy = (Math.floor(i / cols) + 0.5) * CELL;
-        const point = collideBuildings(map, cx, cy, 9);
-        open[i] = Number(
-          cx < map.w - 10 &&
-            cy < map.h - 10 &&
-            Math.hypot(point.x - cx, point.y - cy) < 0.001,
-        );
-      }
-      const edges: number[][] = Array.from({ length: open.length }, () => []);
-      const center = (i: number) => ({
-        x: ((i % cols) + 0.5) * CELL,
-        y: (Math.floor(i / cols) + 0.5) * CELL,
-      });
-      // Geometry stays solid after damage, so sweep each static grid edge once.
-      for (let i = 0; i < open.length; i++) {
-        if (!open[i]) continue;
-        const neighbors = [i + cols];
-        if (i % cols < cols - 1) neighbors.push(i + 1);
-        for (const j of neighbors) {
-          if (j >= open.length || !open[j] || !clear(map, center(i), center(j)))
-            continue;
-          edges[i].push(j);
-          edges[j].push(i);
-        }
-      }
-      grid = { cols, rows, open, edges };
-      grids.set(map, grid);
-    }
+    prewarmNavigation(map);
+    const grid = grids.get(map)!;
     const { cols, open, edges } = grid;
     const center = (i: number) => ({
       x: ((i % cols) + 0.5) * CELL,
       y: (Math.floor(i / cols) + 0.5) * CELL,
     });
-    const candidates: number[] = [];
-    for (let i = 0; i < open.length; i++) if (open[i]) candidates.push(i);
-    const distance2 = (i: number) => {
-      const dx = ((i % cols) + 0.5) * CELL - e.x;
-      const dy = (Math.floor(i / cols) + 0.5) * CELL - e.y;
-      return dx * dx + dy * dy;
-    };
-    candidates.sort((a, b) => distance2(a) - distance2(b));
-    const start = candidates.find((i) => clear(map, e, center(i))) ?? -1;
-    if (start < 0) return { x: e.x, y: e.y };
+    // Test nearby cells first; scanning from the map corner repeats long polygon sweeps.
+    const candidates: { index: number; point: Point; distance: number }[] = [];
+    for (let i = 0; i < open.length; i++)
+      if (open[i]) {
+        const point = center(i);
+        candidates.push({ index: i, point, distance: distance2(point, e) });
+      }
+    candidates.sort((a, b) => a.distance - b.distance);
+    const start =
+      candidates
+        .slice(0, 32)
+        .find((candidate) => clear(map, e, candidate.point))?.index ?? -1;
+    if (start < 0) {
+      // A coarse graph can miss narrow passages; take a clear local step and retry after movement.
+      let best: Point = { x: e.x, y: e.y };
+      let nearest = Infinity;
+      for (let i = 0; i < 16; i++) {
+        const angle = (i * Math.PI) / 8;
+        const point = {
+          x: e.x + Math.cos(angle) * CELL,
+          y: e.y + Math.sin(angle) * CELL,
+        };
+        const distance = distance2(point, target);
+        if (distance < nearest && clear(map, e, point)) {
+          best = point;
+          nearest = distance;
+        }
+      }
+      return best;
+    }
     const parents = new Int32Array(open.length).fill(-1);
     const queue = [start];
     parents[start] = start;

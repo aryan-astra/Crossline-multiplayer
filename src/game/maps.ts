@@ -445,6 +445,36 @@ function resolveBuildings(map: MapDef, x: number, y: number, r: number): Point {
   };
 }
 
+export function isWalkable(
+  map: MapDef,
+  x: number,
+  y: number,
+  r: number,
+): boolean {
+  if (x < 10 || y < 10 || x > map.w - 10 || y > map.h - 10) return false;
+  for (const b of map.buildings) {
+    if (!["wall", "block", "shop", "monument"].includes(b.kind)) continue;
+    if (x + r < b.x || x - r > b.x + b.w || y + r < b.y || y - r > b.y + b.h)
+      continue;
+    if (b.footprint?.length) {
+      if (insidePolygon(x, y, b.footprint)) return false;
+      for (let i = 0; i < b.footprint.length; i++) {
+        const p = nearestOnSegment(
+          { x, y },
+          b.footprint[i],
+          b.footprint[(i + 1) % b.footprint.length],
+        );
+        if ((p.x - x) ** 2 + (p.y - y) ** 2 < r * r - 1e-6) return false;
+      }
+    } else {
+      const dx = x - Math.max(b.x, Math.min(x, b.x + b.w));
+      const dy = y - Math.max(b.y, Math.min(y, b.y + b.h));
+      if (dx * dx + dy * dy < r * r - 1e-6) return false;
+    }
+  }
+  return true;
+}
+
 export function collideBuildings(
   map: MapDef,
   x: number,
@@ -452,9 +482,7 @@ export function collideBuildings(
   r: number,
 ): Point {
   const resolved = resolveBuildings(map, x, y, r);
-  const checked = resolveBuildings(map, resolved.x, resolved.y, r);
-  if (Math.hypot(checked.x - resolved.x, checked.y - resolved.y) < 0.01)
-    return resolved;
+  if (isWalkable(map, resolved.x, resolved.y, r)) return resolved;
   for (let radius = 6; radius <= 120; radius += 6) {
     for (let dy = -radius; dy <= radius; dy += 6)
       for (let dx = -radius; dx <= radius; dx += 6) {
@@ -465,9 +493,7 @@ export function collideBuildings(
           resolved.y + dy,
           r,
         );
-        const clear = resolveBuildings(map, candidate.x, candidate.y, r);
-        if (Math.hypot(clear.x - candidate.x, clear.y - candidate.y) < 0.01)
-          return candidate;
+        if (isWalkable(map, candidate.x, candidate.y, r)) return candidate;
       }
   }
   return resolved;
