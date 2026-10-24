@@ -545,10 +545,12 @@
 }
 @media (max-height: 470px) {
   .lobby-credit,
-  .lobby-scene-caption {
+  .lobby-scene-caption,
+  .lobby-intro .lobby-kicker,
+  .lobby-description {
     display: none;
   }
-  .lobby-description {
-    line-height: 1.4;
+  .lobby-actions {
+    margin-top: var(--space-s);
   }
 }
