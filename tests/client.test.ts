@@ -69,6 +69,7 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
     sent: string[] = [];
     onopen: (() => void) | null = null;
     onclose: ((event: { code: number }) => void) | null = null;
+    onmessage: ((event: { data: string }) => void) | null = null;
     constructor() {
       sockets.push(this);
     }
@@ -133,6 +134,69 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
   t.mock.timers.tick(30_000);
   assert.equal(sockets.length, 2);
   assert.equal(connection.send({ type: "ping" }), false);
+  await t.test(
+    "unacknowledged financial commands replay their original receipt ID after reconnect",
+    async () => {
+      const notices: string[] = [];
+      let joinMap: "delhi" | "paris" = "delhi";
+      const replay = connectWorld({
+        name: "Trader",
+        join: () => ({ type: "join", mapId: joinMap, role: "watcher" }),
+        onSnapshot() {},
+        onStatus() {},
+        onNotice: (message) => notices.push(message),
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const first = sockets.at(-1)!;
+      first.readyState = 1;
+      first.onopen!();
+      replay.send({ type: "trade", instrument: "calm", quantity: 1 });
+      replay.send({ type: "bet", contract: "unrest60", stake: 5 });
+      replay.send({ type: "fund", faction: "police" });
+      const originals = first.sent.slice(1).map((raw) => JSON.parse(raw));
+      assert.match(notices.at(-1)!, /Submitting transaction/);
+      first.close();
+      t.mock.timers.tick(1000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const second = sockets.at(-1)!;
+      second.readyState = 1;
+      second.onopen!();
+      for (let i = 0; i < originals.length; i++) {
+        const retried = JSON.parse(second.sent[i + 1]);
+        assert.equal(retried.requestId, originals[i].requestId);
+        assert.equal(retried.type, originals[i].type);
+        assert.equal(retried.seq, i + 2);
+        second.onmessage!({
+          data: JSON.stringify({
+            v: 1,
+            type: "ack",
+            seq: i + 2,
+            requestId: retried.requestId,
+            message: "Accepted",
+          }),
+        });
+      }
+      assert.match(notices.at(-1)!, /Transaction accepted/);
+      second.close();
+      t.mock.timers.tick(1000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const third = sockets.at(-1)!;
+      third.readyState = 1;
+      third.onopen!();
+      assert.equal(third.sent.length, 1);
+      replay.send({ type: "fund", faction: "police" });
+      joinMap = "paris";
+      third.close();
+      t.mock.timers.tick(1000);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const fourth = sockets.at(-1)!;
+      fourth.readyState = 1;
+      fourth.onopen!();
+      assert.equal(fourth.sent.length, 1);
+      assert.match(notices.at(-1)!, /City changed/);
+      replay.close();
+    },
+  );
   for (const code of [4001, 1008])
     await t.test(
       `policy close ${code} is terminal and never reconnects`,

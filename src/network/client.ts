@@ -107,8 +107,9 @@ export function connectWorld(options: {
     seq = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
   const maps = new Map<MapId, MapDef>();
+  const pending = new Map<string, { command: Command; mapId: MapId }>();
   const abort = new AbortController();
-  const send = (command: Command) => {
+  const transmit = (command: Command, requestId: string) => {
     if (
       !socket ||
       socket.readyState !== WebSocket.OPEN ||
@@ -120,15 +121,28 @@ export function connectWorld(options: {
         ...command,
         v: 1,
         seq: ++seq,
-        requestId:
-          typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) =>
-                part.toString(16).padStart(8, "0"),
-              ).join(""),
+        requestId,
       }),
     );
     return true;
+  };
+  const send = (command: Command) => {
+    const financial = ["trade", "bet", "fund"].includes(command.type);
+    if (financial && pending.size >= 16) return false;
+    const requestId =
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Array.from(crypto.getRandomValues(new Uint32Array(4)), (part) =>
+            part.toString(16).padStart(8, "0"),
+          ).join("");
+    const sent = transmit(command, requestId);
+    if (sent && financial) {
+      pending.set(requestId, { command, mapId: options.join().mapId });
+      options.onNotice(
+        "Submitting transaction… Waiting for the server receipt.",
+      );
+    }
+    return sent;
   };
   const schedule = () => {
     if (stopped) return;
@@ -170,7 +184,23 @@ export function connectWorld(options: {
         seq = 0;
         attempt = 0;
         options.onStatus("Connected");
-        send(options.join());
+        const join = options.join();
+        send(join);
+        if (pending.size)
+          options.onNotice(
+            "Retrying unconfirmed transactions… Waiting for the server receipt.",
+          );
+        for (const [requestId, transaction] of pending) {
+          if (
+            transaction.command.type !== "trade" &&
+            transaction.mapId !== join.mapId
+          ) {
+            pending.delete(requestId);
+            options.onNotice(
+              "City changed. An unconfirmed prediction or supply request was not retried; check your wallet and history.",
+            );
+          } else transmit(transaction.command, requestId);
+        }
       };
       active.onmessage = (event: MessageEvent) => {
         if (stopped || socket !== active || typeof event.data !== "string")
@@ -182,7 +212,14 @@ export function connectWorld(options: {
         }
         if (message.type === "snapshot" && "map" in message.world)
           options.onSnapshot(message as Snapshot);
-        else if (message.type === "error") options.onNotice(message.message);
+        else if (message.type === "ack" || message.type === "error") {
+          const transaction = message.requestId
+            ? pending.delete(message.requestId)
+            : false;
+          if (message.type === "error") options.onNotice(message.message);
+          else if (transaction)
+            options.onNotice("Transaction accepted by the server.");
+        }
       };
       active.onerror = () => {
         if (!stopped)
@@ -225,6 +262,7 @@ export function connectWorld(options: {
       stopped = true;
       abort.abort();
       clearTimeout(retry);
+      pending.clear();
       if (socket) {
         socket.onclose = null;
         socket.close();
