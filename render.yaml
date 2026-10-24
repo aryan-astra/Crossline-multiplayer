@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: crossline-demo
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm ci --ignore-scripts && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: HOST
+        value: '0.0.0.0'
+      - key: NODE_VERSION
+        value: '24.20.0'
+      - key: DATA_FILE
+        value: /tmp/crossline.sqlite

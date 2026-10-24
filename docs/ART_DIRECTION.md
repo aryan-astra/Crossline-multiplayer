@@ -1,18 +1,18 @@
 # Homepage visual integration
 
-The previous schematic homepage was replaced following the user's visual review. Both supplied prototype homepages were inspected again. This change concerns the menu and presentation assets; simulation, networking boundaries, saved-state behavior and game controls are unchanged.
+The homepage now uses a single-screen game lobby following the user's visual review. The retained hero remains visible behind in-place callsign, city, entry-area and role steps. No scrolling marketing sections, promotional counters or decorative status pills remain. The footer reports the real server connection. Entry areas affect newly spawned characters only; saved characters resume in place.
 
 ## What comes from each prototype
 
 - **STREETS / Crowd Command:** oversized condensed title, amber street-poster accent, the "Every street has two sides" line, callsign registration panel, faction colors and role descriptions.
-- **FLASHPOINT / Rally Lines:** full-width illustrated hero, sequential callsign/location/role selection, image-led location cards, character portraits, field-intel section and a clear final deployment action.
-- **Crossline baseline:** game name, fictional city framing, accessible selected states, responsive controls, honest local-practice labels and the tested game implementation.
+- **FLASHPOINT / Rally Lines:** illustrated hero, sequential callsign/location/role selection, image-led city choices and a clear final entry action. Portrait assets remain available, but the compact role step uses text to fit one screen.
+- **Crossline baseline:** game name, shared authoritative world, accessible native radio groups, responsive controls, focus management and honest connection status.
 
 The original prototypes' `/img/title.jpg`, `/img/hero-bg.jpg`, location images and role portraits were referenced in code but absent from the supplied directories. The project and both source trees were searched; public web searches for the exact prototype titles did not locate a recoverable original. The user authorized finding images or choosing the best replacement route. The assets below are newly generated replacements, **not recovered original artwork**.
 
 ## Design tokens
 
-Charcoal `#0e1118`, panel navy `#171c26`, paper white `#f6f4ee`, amber `#ffd067`, with orange/blue/olive/violet faction accents. Bebas Neue restores the source's condensed display typography; Barlow handles body text. Both fonts are served locally, with their SIL Open Font License files in `public/fonts/`.
+Charcoal `#101214`, panel `#171a1d`, paper white `#f4efe5` and one amber accent `#eab866` unify the lobby and HUD. World faction colors retain their semantic meaning. Bebas Neue restores the source's condensed display typography; Barlow handles body text. Both fonts are served locally, with their SIL Open Font License files in `public/fonts/`. The new `public/brand/crossline-mark.svg` and matching favicon are original vector drawings of intersecting split lines; no external logo or new generated image was used in this pass.
 
 The artwork is confined to the homepage hero and selection cards. It is not used as interactive map geometry. Next Image generates appropriate delivery sizes and lazy-loads selection artwork; the hero is prioritized. Original generated PNG files retain their metadata.
 
