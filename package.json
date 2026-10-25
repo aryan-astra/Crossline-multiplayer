@@ -10,6 +10,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "build": "npm run build:server && next build",
     "start": "node .server-build/server.js",
+    "start:lan": "node scripts/start-lan.mjs",
     "lint": "eslint src tests server.ts",
     "format": "prettier --write src tests docs README.md package.json tsconfig*.json *.mjs next.config.ts server.ts .github",
     "format:check": "prettier --check src tests docs README.md package.json tsconfig*.json *.mjs next.config.ts server.ts .github",

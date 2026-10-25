@@ -15,6 +15,8 @@ Open http://127.0.0.1:3000. PowerShell alternative port: `$env:PORT=3001`. Produ
 
 Set HOST=0.0.0.0 intentionally for LAN play and use the host's LAN address. Separate browser profiles or a private window create separate players; ordinary tabs share a cookie and replace the same identity's connection. Guest progress survives refresh/restart but clearing cookies loses account access.
 
+For friends on the **same Wi-Fi or LAN**, run `npm run build` once, then `npm run start:lan`. The launcher prints this machine's local IPv4 addresses. Friends open the printed address (not `127.0.0.1`) while the host stays running. Allow Node only on your trusted private network if Windows asks. This does not configure firewalls, router forwarding or an internet tunnel. Players on different internet connections need an HTTPS/WSS deployment; see [deployment options](docs/DEPLOYMENT_OPTIONS.md).
+
 ## Play
 
 The title screen and name → city → entry area → role setup stay in one viewport. Choose Jantar Mantar, New Delhi or Place de la République, Paris. Entry areas place new characters only; saved characters resume in place. WASD/arrows move, Shift sprints, E/Space is the role's primary action, Q secondary, T supplied police gas. F collects essentials or interacts with the Constitution Book. B enters/exits near a doorway. C then click commands police. Spectators pan/zoom, inspect/follow people, trade, predict outcomes or fund deliveries. Touch controls are included. Settings suspend your input; the public world continues.
@@ -33,6 +35,8 @@ Military appointments are temporary and earned through police performance. Death
 Original prototypes remain preserved locally and ignored. Source A supplied maps, rendering and rules; Source B supplied formation and rally algorithms. Menu images remain separate from collision geometry.
 
 The playable street layouts and building footprints now use OpenStreetMap extracts for Jantar Mantar and Place de la République. Facades, interiors and events are fictional; see [map sources and ODbL attribution](docs/MAP_SOURCES.md). Spectators can open **Markets & supplies** directly from the header to see price histories, holdings, virtual trades and supply funding. Settings includes opt-in directional event sound.
+
+The field HUD separates Overview, People and News. Spectators get a dedicated **Exchange** with Market, Predictions and Supply Routes views, live quote charts, available credits, marked portfolio values, contract history and actual delivery entities. Career & rankings shows the current guest's progression alongside public scores. All displayed balances and outcomes come from server snapshots. The server targets 30 fixed steps/second and yields after each step; under overload the shared simulation slows instead of chaining catch-up work ahead of networking.
 
 ## Validate
 
