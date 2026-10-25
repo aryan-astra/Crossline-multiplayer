@@ -121,3 +121,32 @@ Desktop HUD reported2.0ms render work for47 visible entities at1158×649 in this
 ## Limits and remaining checks
 
 No real Android device, internet deployment, cloud free-tier soak, public authentication/anti-Sybil defense, calibrated betting odds, full equipment life-budget economy, full command hierarchy, rich licensed audio library or exhaustive long-running economy balance test was completed. Thirty simulated minutes is not a day-long operational soak. Headless scenarios do not certify supported client counts. Existing promotional image provenance is documented in ART_DIRECTION.md; no new image generation was used for this phase. Remote CI execution is separate from locally passing validation. The current preview replaces the older port3000 process; historical port3004 measurements above used isolated test data.
+
+# Engine and game interface revision — 25 October 2026
+
+This section supersedes older counts and measurements below for this revision. Node v24.22.1, Windows. Formatting, ESLint, TypeScript, **140 tests with zero failures/skips**, and the production build passed. The final mobile card-padding adjustment also passed formatting and a subsequent production build. `npm audit --omit=dev` reported zero vulnerabilities; this does not certify absence of application vulnerabilities.
+
+Tests cover human-only objective participation (including forged NPC profile fields), disconnect cancellation, preserved saved progress/broken barricades, route jitter/unreachable destinations/topology changes, bounded visual prediction, shield durability, selected-target/visibility combat, empty ammunition, roadside caps, advertised delivery contents, shop stock/cooldowns, server-owned supply prices and durable duplicate receipts. HTTP/WebSocket tests cover distinct identities, shared authoritative state, replay rejection, input flooding, origin checks and separate LAN/online authorities. Two independently seeded 300-second headless rounds matched.
+
+The recent-violence regression first failed with linear decay: an idle world's value remained above 20 after 15 simulation seconds. Exponential decay and a 100-point cap made it pass. An earlier static-minimap cache regression also failed before the renderer cache was added. No test failure was marked as a pass.
+
+## Browser checks
+
+The production app ran at `127.0.0.1:3000` and `localhost:3000` in the in-app browser with separate guest cookies. A held desktop key changed authoritative x from 1932.2282 to 1987.2282. Another input sample reached a changed authoritative y after **127.7 ms**, with subsequent snapshots approximately 100 ms apart. This is one local network-observation sample, not a percentile or physical display-latency measurement. Q reduced stones from three to two.
+
+Across six matching moving ticks, the spectator received the same player y coordinates as the player session, including 1431.0011, 1438.3345 and 1471.3345. These were received network frames, not independent local simulation. The spectator bought one ORDR unit, sold it back to zero holdings, then funded essentials: credits 65 → 45 and an en-route truck appeared. Prices changed between displayed quote and execution as documented. Both warning/error console logs were empty during these checks.
+
+The title art, disabled unconfigured Online mode, two-step setup, compact menu, live exchange, supplies catalog and permanent minimap were inspected. At emulated 390 × 844, document width was 390 with no page overflow; the map's right edge was 120 and bottom 628, while joystick/action controls occupied the lower region starting at 708/712. Touch emulation exposed the joystick; the ordinary desktop view did not. Screenshots are ignored local artifacts under `artifacts/`. No physical Android hardware was used.
+
+## Headless performance sample
+
+`npm run benchmark`, seed 42, 900 ticks per scenario, excludes rendering, transport and SQLite. This run preceded the final transient-violence decay adjustment; it is not a saved-world capacity certification. Server startup began during the benchmark, so some contention was present.
+
+| Humans / bots | Median tick ms | p95 tick ms | Max tick ms |
+| ------------- | -------------: | ----------: | ----------: |
+| 1 / 20        |          2.069 |       3.318 |      58.683 |
+| 2 / 50        |          3.613 |       6.126 |      45.400 |
+| 5 / 100       |          8.053 |      13.657 |      69.654 |
+| 10 / adaptive |          4.984 |      10.238 |      51.682 |
+
+Cold spikes remain above a 33.3 ms step budget. Physical mobile comfort, sustained internet concurrency, cloud free-tier load and a new long-duration endurance run were not checked. No public server was deployed. Existing accounts and SQLite data were preserved; this was not a reset. See [engine review](ENGINE_REVIEW.md), [networking](NETWORKING.md) and [roadmap](ROADMAP.md) for remaining limits.
