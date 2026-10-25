@@ -26,8 +26,8 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
   c.height = map.h;
   const g = c.getContext("2d")!;
   const ground = g.createLinearGradient(0, 0, 0, map.h);
-  ground.addColorStop(0, map.ambience === "delhi" ? "#b4c0bd" : "#c1c8c5");
-  ground.addColorStop(1, map.ambience === "delhi" ? "#9daead" : "#abb7b8");
+  ground.addColorStop(0, map.ambience === "delhi" ? "#c6d1ca" : "#c5d2d2");
+  ground.addColorStop(1, map.ambience === "delhi" ? "#adc3bb" : "#b3c8c4");
   g.fillStyle = ground;
   g.fillRect(0, 0, map.w, map.h);
   g.strokeStyle = "rgba(53,72,74,0.075)";
@@ -47,7 +47,7 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
     g.stroke();
   }
   for (const lawn of map.lawns) {
-    g.fillStyle = "#91a68e";
+    g.fillStyle = "#79a779";
     g.fillRect(lawn.x, lawn.y, lawn.w, lawn.h);
     g.fillStyle = "rgba(221,226,196,0.22)";
     g.fillRect(lawn.x + 6, lawn.y + 6, Math.max(0, lawn.w - 12), 2);
@@ -299,18 +299,18 @@ function buildingPalette(b: Building, map: MapDef) {
   const palettes =
     map.ambience === "paris"
       ? [
-          ["#d0c8b7", "#79838b"],
-          ["#c7c5b8", "#7d8990"],
-          ["#d2c2b6", "#887e87"],
-          ["#c5c9bd", "#74837f"],
-          ["#d4cabb", "#858b91"],
+          ["#eadcc2", "#6389a0"],
+          ["#d4e1d4", "#577f77"],
+          ["#edd0c6", "#ac7064"],
+          ["#d4deea", "#6d83a2"],
+          ["#e4d7e5", "#8e789e"],
         ]
       : [
-          ["#c8c8b7", "#a29c8c"],
-          ["#c6cbc0", "#8f9b98"],
-          ["#d0c4b3", "#9b8f82"],
-          ["#bcc6c2", "#859592"],
-          ["#d0c8b7", "#9f9786"],
+          ["#ead9b7", "#b96f53"],
+          ["#c6dfcf", "#568d80"],
+          ["#ead9b3", "#b88c52"],
+          ["#d0e0e5", "#5b88a0"],
+          ["#ebd1d4", "#a97786"],
         ];
   const index =
     Math.abs(Math.floor(b.x * 0.17 + b.y * 0.31 + b.w * 0.13 + b.h * 0.07)) %
