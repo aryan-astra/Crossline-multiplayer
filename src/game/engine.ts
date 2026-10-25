@@ -770,22 +770,38 @@ function updateProtester(w: World, e: Entity, dt: number) {
     if (e.stateT <= 0) e.state = "march";
     return;
   }
-  if (
-    w.persistent &&
-    w.objective &&
-    e.brain.discipline > 0.55 &&
-    e.violentT <= 0 &&
-    w.objective.status !== "recovering"
-  ) {
-    moveTo(
-      w,
-      e,
-      w.objective.x - 20 + (e.id % 3) * 20,
-      w.objective.y + (e.id % 2) * 20,
-      e.speed,
-      dt,
-    );
+  if (e.brain.discipline >= 0.65 && e.violentT <= 0) {
+    const points = w.map.rallyPoints;
+    const objective =
+      w.persistent && w.objective && w.objective.status !== "recovering"
+        ? w.objective
+        : null;
+    if (points.length === 0 && !objective) return;
+    if (!objective && e.rallyIdx >= points.length) {
+      e.rallyIdx = 0;
+      e.target = null;
+    }
+    if (objective && e.rallyIdx >= points.length) {
+      e.target = { x: objective.x, y: objective.y };
+    }
+    const target = e.target;
+    if (
+      (!target || dist(e, target) < 24) &&
+      !(objective && e.rallyIdx >= points.length)
+    ) {
+      if (e.target)
+        e.rallyIdx = (e.rallyIdx + 1) % (points.length + (objective ? 1 : 0));
+      if (objective && e.rallyIdx >= points.length)
+        e.target = { x: objective.x, y: objective.y };
+      else {
+        const rally = points[e.rallyIdx % points.length];
+        const target = rallyTarget(e, rally, 65, 0);
+        e.target = collideBuildings(w.map, target.x, target.y, 9);
+      }
+    }
     e.state = "march";
+    const destination = e.target;
+    if (destination) moveTo(w, e, destination.x, destination.y, e.speed, dt);
     return;
   }
   e.think -= dt;
@@ -798,6 +814,7 @@ function updateProtester(w: World, e: Entity, dt: number) {
   // decide violence
   const violenceP =
     b.aggression *
+    (1 - b.discipline) *
     (w.tension / 100) *
     (0.12 + (e.stones > 0 ? 0.25 : 0) + w.morale / 500);
   if (e.violentT <= 0 && e.cooldown <= 0 && random(w) < violenceP) {
