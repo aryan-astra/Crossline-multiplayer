@@ -26,6 +26,7 @@ type Connection = {
   blockedAt: number;
   invalid: number;
   mapId?: MapId;
+  snapshotPending?: boolean;
 };
 
 function token(request: IncomingMessage): string {
@@ -118,13 +119,8 @@ export function createGameServer({
   const socketOptions = {
     noServer: true,
     maxPayload: 8192,
-    perMessageDeflate: {
-      serverNoContextTakeover: true,
-      clientNoContextTakeover: true,
-      concurrencyLimit: 4,
-      threshold: 1024,
-      zlibDeflateOptions: { level: 1, memLevel: 1 },
-    },
+    // Browser inputs also use negotiated compression; queued inflate work delays controls.
+    perMessageDeflate: false,
     closeTimeout: 1000,
   };
   const sockets = new WebSocketServer(socketOptions);
@@ -209,12 +205,21 @@ export function createGameServer({
       return false;
     }
     connection.blockedAt = 0;
-    connection.socket.send(JSON.stringify(message), (error) => {
-      if (error) connection.socket.terminate();
-    });
+    if (message.type === "snapshot") connection.snapshotPending = true;
+    // shortcut: use uncompressed frames until payload reduction and browser input latency are measured together.
+    connection.socket.send(
+      JSON.stringify(message),
+      { compress: false },
+      (error) => {
+        if (message.type === "snapshot") connection.snapshotPending = false;
+        if (error) connection.socket.terminate();
+      },
+    );
     return true;
   };
   const snapshot = (id: string, connection: Connection) => {
+    // Superseded snapshots are disposable; never queue them behind an unfinished write.
+    if (connection.snapshotPending) return;
     try {
       const full = service.snapshot(id, connection.seq, clients.size);
       if (connection.mapId !== full.world.map.id) {

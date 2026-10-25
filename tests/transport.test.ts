@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { WebSocket } from "ws";
-import { deflateRawSync } from "node:zlib";
 import { createGameServer } from "../src/server/transport";
 import { Store } from "../src/server/store";
 import type { Profile, ServerMessage, Snapshot } from "../src/network/protocol";
@@ -137,6 +136,53 @@ test("overloaded simulation yields to network I/O instead of chaining catch-up s
   }
 });
 
+test("live snapshots skip compression and coalesce while a write is unfinished", async () => {
+  const original = WebSocket.prototype.send;
+  const frames: { type: string; compress?: boolean }[] = [];
+  let release: (() => void) | undefined;
+  WebSocket.prototype.send = function (
+    data,
+    options?: Parameters<typeof original>[1] | ((error?: Error) => void),
+    callback?: (error?: Error) => void,
+  ) {
+    const config = typeof options === "function" ? {} : (options ?? {});
+    const done = typeof options === "function" ? options : callback;
+    const type = typeof data === "string" ? JSON.parse(data).type : undefined;
+    if (["snapshot", "map", "ack"].includes(type))
+      frames.push({ type, compress: config.compress });
+    if (type === "snapshot") {
+      return original.call(this, data, config, (error) => {
+        release = () => done?.(error);
+      });
+    }
+    return original.call(this, data, config, done);
+  };
+  const game = await setup();
+  try {
+    const guest = await game.guest("Backpressure QA");
+    const connection = await game.connect(guest.cookie);
+    assert.equal(connection.ws.extensions, "");
+    await connection.wait((m) => m.type === "snapshot");
+    const count = frames.filter((f) => f.type === "snapshot").length;
+    connection.send({ v: 1, seq: 1, requestId: "ping-busy", type: "ping" });
+    await connection.wait((m) => m.type === "ack" && m.seq === 1);
+    await delay(250);
+    assert.equal(frames.filter((f) => f.type === "snapshot").length, count);
+    assert.ok(
+      frames
+        .filter((f) => f.type === "snapshot")
+        .every((f) => f.compress === false),
+    );
+    assert.ok(frames.some((f) => f.type === "map" && f.compress === false));
+    release?.();
+    await delay(150);
+    assert.ok(frames.filter((f) => f.type === "snapshot").length > count);
+  } finally {
+    WebSocket.prototype.send = original;
+    await game.close();
+  }
+});
+
 test("two authenticated WebSocket sessions share server movement, bot state and objective; replay is rejected", async () => {
   const game = await setup();
   try {
@@ -206,15 +252,7 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
       compact.length < baseline.length * 0.7,
       `${compact.length} < ${baseline.length} * 0.7`,
     );
-    assert.match(first.ws.extensions, /permessage-deflate/);
-    const compressedBytes = deflateRawSync(compact, {
-      level: 1,
-      memLevel: 1,
-    }).length;
-    assert.ok(
-      compressedBytes < compact.length * 0.5,
-      `${compressedBytes} < ${compact.length} / 2`,
-    );
+    assert.equal(first.ws.extensions, "");
     assert.deepEqual(
       JSON.parse(JSON.stringify(a.world.map)),
       JSON.parse(JSON.stringify(game.service.worlds.delhi.map)),
