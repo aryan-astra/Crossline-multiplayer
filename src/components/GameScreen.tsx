@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import MarketDesk from "./MarketDesk";
+import "@/app/game.css";
 import { buildGround, drawFrame, drawMinimap } from "@/game/render";
 import {
   cameraZoom,
@@ -51,7 +53,7 @@ export default function GameScreen({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const minimap = useRef<HTMLCanvasElement>(null);
-  const marketSection = useRef<HTMLDetailsElement>(null);
+  const marketButton = useRef<HTMLButtonElement>(null);
   const modal = useRef<HTMLDialogElement>(null);
   const latest = useRef<Snapshot | null>(null);
   const previous = useRef<Snapshot | null>(null);
@@ -83,7 +85,9 @@ export default function GameScreen({
   const [quality, setQuality] = useState(2);
   const [volume, setVolume] = useState(0);
   const [frameMs, setFrameMs] = useState(0);
-  const [stake, setStake] = useState(5);
+  const [hudTab, setHudTab] = useState<"overview" | "people" | "news">(
+    "overview",
+  );
   const [running, setRunning] = useState(false);
   const [hudCollapsed, setHudCollapsed] = useState(
     () =>
@@ -480,6 +484,10 @@ export default function GameScreen({
   const online = status === "Connected" && !!snapshot;
   const disabled = !online || !!panel;
   const symbol = w?.map.id === "paris" ? "€" : "₹";
+  const closeMarket = useCallback(() => {
+    setMarketOpen(false);
+    marketButton.current?.focus();
+  }, []);
   const deadFor = Math.max(
     0,
     Math.ceil(
@@ -493,7 +501,7 @@ export default function GameScreen({
   };
 
   return (
-    <main className="game-shell">
+    <main className="game-shell" data-role={actualRole}>
       <canvas
         ref={canvas}
         aria-label="Public city. Move with WASD or arrows. Select agents from the inspector for keyboard access."
@@ -575,7 +583,9 @@ export default function GameScreen({
             send({ type: "order", ...point });
             commandRef.current = false;
             setCommand(false);
-          } else
+          } else {
+            setHudTab("people");
+            setHudCollapsed(false);
             select(
               world.entities
                 .filter(
@@ -593,6 +603,7 @@ export default function GameScreen({
                 .find((e) => Math.hypot(e.x - point.x, e.y - point.y) < 22)
                 ?.id ?? null,
             );
+          }
         }}
         onPointerCancel={(event) => {
           pointers.current.delete(event.pointerId);
@@ -621,6 +632,10 @@ export default function GameScreen({
         <span role="status">
           {status} · {snapshot?.online ?? 0} online
         </span>
+        <span className="header-wallet" aria-label="Available virtual credits">
+          {symbol}
+          {snapshot?.self.credits ?? 0} credits
+        </span>
         <button
           aria-expanded={!hudCollapsed}
           aria-controls="world-hud"
@@ -630,12 +645,12 @@ export default function GameScreen({
         </button>
         {actualRole === "watcher" && (
           <button
+            ref={marketButton}
+            disabled={!online}
+            aria-expanded={marketOpen}
             onClick={() => {
-              setHudCollapsed(false);
-              setMarketOpen(true);
-              requestAnimationFrame(() => {
-                marketSection.current?.scrollIntoView({ block: "nearest" });
-              });
+              setMarketOpen(!marketOpen);
+              setHudCollapsed(true);
             }}
           >
             Markets &amp; supplies
@@ -645,7 +660,7 @@ export default function GameScreen({
         <button onClick={() => togglePanel("settings")}>Settings</button>
         <button onClick={onExit}>Leave</button>
       </header>
-      {(notice || status !== "Connected") && (
+      {!marketOpen && (notice || status !== "Connected") && (
         <div className="game-toast" role="status">
           {notice || status}
         </div>
@@ -655,399 +670,261 @@ export default function GameScreen({
         className="game-panel"
         data-collapsed={hudCollapsed}
       >
-        <p className="eyebrow">PUBLIC WORLD · {name}</p>
-        <p role="status" className="muted">
-          {notice ||
-            (online
-              ? "Shared simulation active. Your progress is server-owned."
-              : "Connecting to the local game server…")}
-        </p>
-        <div className="stats">
-          <span>
-            <b>{actualRole === "watcher" ? "—" : Math.round(p?.hp ?? 0)}</b>
-            HEALTH
-          </span>
-          <span>
-            <b>
-              {symbol}
-              {(snapshot?.self.credits ?? 0).toFixed(0)}
-            </b>
-            GAME CREDITS
-          </span>
-          <span>
-            <b>{snapshot?.self.score ?? 0}</b>SCORE
-          </span>
+        <div className="hud-heading">
+          <h2>{actualRole === "watcher" ? "City watch" : "Field status"}</h2>
+          <span>{name}</span>
         </div>
-        {p && (
-          <>
-            <label className="meter">
-              FOOD
-              <progress max="100" value={p.hunger} />
-            </label>
-            <label className="meter">
-              WATER
-              <progress max="100" value={p.thirst} />
-            </label>
-            <p className="muted">
-              {p.state.toUpperCase()}
-              {p.wanted > 0 ? ` · Wanted ${p.wanted}` : ""}
-              {p.custodyUntil
-                ? ` · Release in ${Math.max(0, Math.ceil(p.custodyUntil - (w?.time ?? 0)))}s`
-                : ""}
-            </p>
-          </>
-        )}
-        {actualRole === "police" && (
-          <div className="dispatch-card">
-            <p className="eyebrow">ACTIVE DISPATCH</p>
-            {policeTask ? (
-              <>
-                <b>{policeTask.name}</b>
-                <span>
-                  Level {policeTask.wantedLevel} ·{" "}
-                  {Math.round(
-                    Math.hypot(
-                      policeTask.x - (p?.x ?? 0),
-                      policeTask.y - (p?.y ?? 0),
-                    ),
-                  )}{" "}
-                  units away ·{" "}
-                  {policeTask.inBuilding ? "entrance marked" : "target marked"}
-                </span>
-                <button onClick={() => select(policeTask.targetId)}>
-                  Highlight on map
-                </button>
-              </>
-            ) : (
-              <span>No active dispatch. Protect the Constitution Book.</span>
-            )}
-            <small>
-              Detain only if actively violent; wanted status alone is not
-              grounds for custody.
-            </small>
-          </div>
-        )}
-        <label className="meter">
-          UNREST {Math.round(w?.tension ?? 0)}%
-          <progress max="100" value={w?.tension ?? 0} />
-        </label>
-        <div className="selected-unit">
-          <b>Constitution Book</b>
-          <span>
-            Faction objectives · Protesters {w?.factionScores?.protester ?? 0} /
-            Police {w?.factionScores?.police ?? 0}
-          </span>
-          <span>
-            {w?.objective?.status ?? "Awaiting world state"}
-            {w?.objective?.status === "recovering"
-              ? ` · Returns in ${Math.ceil(w.objective.recoveryT)}s`
-              : ""}
-          </span>
-          {w?.objective && (
-            <progress
-              aria-label="Objective capture progress"
-              max={w.objective.captureSeconds}
-              value={w.objective.progress}
-            />
-          )}
-        </div>
-        <canvas
-          ref={minimap}
-          width="240"
-          height="164"
-          aria-label="Minimap. Yellow marks your character; pale square marks the Constitution Book."
-        />
-        {actualRole === "watcher" && (
-          <>
-            <div className="view-controls">
-              <button
-                aria-label="Zoom out"
-                onClick={() => {
-                  camera.current.targetZoom = clampZoom(
-                    "watcher",
-                    camera.current.targetZoom - 0.15,
-                  );
-                }}
-              >
-                −
-              </button>
-              <button
-                aria-label="Zoom in"
-                onClick={() => {
-                  camera.current.targetZoom = clampZoom(
-                    "watcher",
-                    camera.current.targetZoom + 0.15,
-                  );
-                }}
-              >
-                +
-              </button>
-              <button
-                disabled={!selected}
-                onClick={() => {
-                  follow.current = !follow.current;
-                  setFollowing(follow.current);
-                }}
-              >
-                {following ? "Stop following" : "Follow selected"}
-              </button>
-            </div>
-            <label className="inspect-label">
-              Public location
-              <select
-                value={w?.map.id ?? mapId}
-                disabled={disabled}
-                onChange={(event) =>
-                  send({ type: "observe", mapId: event.target.value as MapId })
-                }
-              >
-                <option value="delhi">Jantar Mantar, New Delhi</option>
-                <option value="paris">Place de la République, Paris</option>
-              </select>
-            </label>
-          </>
-        )}
-        <label className="inspect-label">
-          Inspect person
-          <select
-            value={selectedId ?? ""}
-            onChange={(event) =>
-              select(event.target.value ? Number(event.target.value) : null)
-            }
-          >
-            <option value="">Choose a person</option>
-            {w?.entities
-              .filter(
-                (e) =>
-                  !e.remove &&
-                  e.kind !== "truck" &&
-                  e.kind !== "crate" &&
-                  e.buildingId === p?.buildingId,
-              )
-              .map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name} / {e.kind}
-                  {e.wanted > 0 ? " · Wanted " + e.wanted : ""}
-                </option>
-              ))}
-          </select>
-        </label>
-        {selected && (
-          <div className="selected-unit">
-            <b>{selected.name}</b>
+        <nav className="hud-tabs" aria-label="City inspector sections">
+          {(
+            [
+              ["overview", "Overview"],
+              ["people", "People"],
+              ["news", "News"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              aria-pressed={hudTab === id}
+              onClick={() => setHudTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="hud-section" hidden={hudTab !== "overview"}>
+          <p role="status" className="muted">
+            {notice ||
+              (online
+                ? "Shared simulation active. Your progress is server-owned."
+                : "Connecting to the local game server…")}
+          </p>
+          <div className="stats">
             <span>
-              {selected.kind} · {selected.state} · HP {Math.round(selected.hp)}
+              <b>{actualRole === "watcher" ? "—" : Math.round(p?.hp ?? 0)}</b>
+              HEALTH
+            </span>
+            <span>
+              <b>
+                {symbol}
+                {(snapshot?.self.credits ?? 0).toFixed(0)}
+              </b>
+              GAME CREDITS
+            </span>
+            <span>
+              <b>{snapshot?.self.score ?? 0}</b>SCORE
             </span>
           </div>
-        )}
-        {actualRole === "watcher" && (
-          <details
-            ref={marketSection}
-            open={marketOpen}
-            onToggle={(event) => setMarketOpen(event.currentTarget.open)}
-          >
-            <summary>Markets, predictions & supplies</summary>
-            <p className="muted">
-              Fictional credits. Trades buy or sell one unit at the rounded
-              quote plus a 2% fee (minimum 1). Predictions pay 2× stake
-              including stake returned. At most five open predictions; each
-              stake is limited to 20% of your balance.
-            </p>
-            {w?.instruments.map((item) => {
-              const holding = snapshot?.holdings[item.id] ?? 0;
-              const quote = Math.round(item.price);
-              const fee = Math.max(1, Math.ceil(quote * 0.02));
-              const history = item.history;
-              const min = Math.min(...history);
-              const max = Math.max(...history);
-              const path = history
-                .map((value, index) => {
-                  const x = 2 + (index / Math.max(1, history.length - 1)) * 76;
-                  const y = 22 - ((value - min) / (max - min || 1)) * 20;
-                  return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
-                })
-                .join(" ");
-              const change = item.price - item.prev;
-              const direction =
-                change > 0 ? "up" : change < 0 ? "down" : "flat";
-              return (
-                <article className="market-card" key={item.id}>
-                  <div className="market-card-heading">
-                    <div>
-                      <b>{item.ticker}</b>
-                      <span>{item.name}</span>
-                    </div>
-                    <div className="market-quote">
-                      <b>
-                        {symbol}
-                        {item.price.toFixed(2)}
-                      </b>
-                      <span data-direction={direction}>
-                        {change > 0 ? "+" : ""}
-                        {change.toFixed(2)} vs previous
-                      </span>
-                    </div>
-                  </div>
-                  <svg
-                    className="market-sparkline"
-                    viewBox="0 0 80 24"
-                    role="img"
-                    aria-label={`${item.name} price history`}
-                  >
-                    <path d={path} data-direction={direction} />
-                  </svg>
-                  <p>{item.desc}</p>
-                  <p className="market-holding">
-                    Holding: {holding} unit{holding === 1 ? "" : "s"} · Value{" "}
-                    {symbol}
-                    {(holding * item.price).toFixed(2)}
-                  </p>
-                  <div className="market-actions">
-                    <button
-                      disabled={
-                        disabled || (snapshot?.self.credits ?? 0) < quote + fee
-                      }
-                      aria-label={`Buy one ${item.name} for ${symbol}${quote + fee} including fee`}
-                      onClick={() =>
-                        send({
-                          type: "trade",
-                          instrument: item.id,
-                          quantity: 1,
-                        })
-                      }
-                    >
-                      Buy · {symbol}
-                      {quote + fee}
-                    </button>
-                    <button
-                      disabled={disabled || holding < 1}
-                      aria-label={`Sell one ${item.name}`}
-                      onClick={() =>
-                        send({
-                          type: "trade",
-                          instrument: item.id,
-                          quantity: -1,
-                        })
-                      }
-                    >
-                      Sell · {symbol}
-                      {quote - fee}
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-            <label className="inspect-label">
-              Prediction stake (1–50)
-              <input
-                type="number"
-                min="1"
-                max="50"
-                value={stake}
-                onChange={(e) =>
-                  setStake(
-                    Math.max(
-                      1,
-                      Math.min(50, Math.floor(Number(e.target.value) || 1)),
-                    ),
-                  )
-                }
-              />
-            </label>
-            <div className="supply-actions">
-              <button
-                disabled={disabled || selected?.kind !== "protester"}
-                onClick={() =>
-                  send({
-                    type: "bet",
-                    contract: "free60",
-                    stake,
-                    targetId: selected?.id,
-                  })
-                }
-              >
-                Selected stays free · 60s
-              </button>
-              <button
-                disabled={disabled}
-                onClick={() =>
-                  send({ type: "bet", contract: "capture120", stake })
-                }
-              >
-                Book captured · 120s
-              </button>
-              <button
-                disabled={disabled}
-                onClick={() =>
-                  send({ type: "bet", contract: "defend120", stake })
-                }
-              >
-                Book defended · 120s
-              </button>
-              <button
-                disabled={disabled}
-                onClick={() =>
-                  send({ type: "bet", contract: "unrest60", stake })
-                }
-              >
-                Unrest ≥60 at 60s
-              </button>
-            </div>
-            <p className="muted">
-              Open:{" "}
-              {snapshot?.predictions.filter((b) => b.status === "open")
-                .length ?? 0}{" "}
-              · Won:{" "}
-              {snapshot?.predictions.filter((b) => b.status === "won").length ??
-                0}
-            </p>
-            {snapshot?.predictions.slice(-5).map((prediction) => (
-              <p className="muted" key={prediction.id}>
-                {prediction.contract} · {prediction.stake} at {prediction.odds}×
-                · {prediction.status}
-                {prediction.status === "open"
-                  ? ` · ${Math.max(0, Math.ceil(prediction.deadline - (w?.time ?? 0)))}s`
+          {p && (
+            <>
+              <label className="meter">
+                FOOD
+                <progress max="100" value={p.hunger} />
+              </label>
+              <label className="meter">
+                WATER
+                <progress max="100" value={p.thirst} />
+              </label>
+              <p className="muted">
+                {p.state.toUpperCase()}
+                {p.wanted > 0 ? ` · Wanted ${p.wanted}` : ""}
+                {p.custodyUntil
+                  ? ` · Release in ${Math.max(0, Math.ceil(p.custodyUntil - (w?.time ?? 0)))}s`
                   : ""}
               </p>
-            ))}
-            <p className="muted">
-              Free means no detention or death during the interval. Capture
-              means a capture occurs; defend means none occurs. Funding requires
-              no open bets or holdings, then pauses trading and predictions for
-              60s.
-            </p>
-            <div className="supply-actions">
-              <button
-                disabled={disabled}
-                onClick={() => send({ type: "fund", faction: "protester" })}
-              >
-                Crowd supply · {symbol}20
-              </button>
-              <button
-                disabled={disabled}
-                onClick={() => send({ type: "fund", faction: "police" })}
-              >
-                Police supply · {symbol}20
-              </button>
+            </>
+          )}
+          {actualRole === "police" && (
+            <div className="dispatch-card">
+              <p className="eyebrow">ACTIVE DISPATCH</p>
+              {policeTask ? (
+                <>
+                  <b>{policeTask.name}</b>
+                  <span>
+                    Level {policeTask.wantedLevel} ·{" "}
+                    {Math.round(
+                      Math.hypot(
+                        policeTask.x - (p?.x ?? 0),
+                        policeTask.y - (p?.y ?? 0),
+                      ),
+                    )}{" "}
+                    units away ·{" "}
+                    {policeTask.inBuilding
+                      ? "entrance marked"
+                      : "target marked"}
+                  </span>
+                  <button onClick={() => select(policeTask.targetId)}>
+                    Highlight on map
+                  </button>
+                </>
+              ) : (
+                <span>No active dispatch. Protect the Constitution Book.</span>
+              )}
+              <small>
+                Detain only if actively violent; wanted status alone is not
+                grounds for custody.
+              </small>
             </div>
-          </details>
-        )}
-        <details className="feed" open>
-          <summary>World news</summary>
-          {w?.feed.slice(0, 5).map((event) => (
-            <p key={event.t} data-tone={event.tone}>
-              {event.text}
+          )}
+          <label className="meter">
+            UNREST {Math.round(w?.tension ?? 0)}%
+            <progress max="100" value={w?.tension ?? 0} />
+          </label>
+          <div className="selected-unit">
+            <b>Constitution Book</b>
+            <span>
+              Faction objectives · Protesters {w?.factionScores?.protester ?? 0}{" "}
+              / Police {w?.factionScores?.police ?? 0}
+            </span>
+            <span>
+              {w?.objective?.status ?? "Awaiting world state"}
+              {w?.objective?.status === "recovering"
+                ? ` · Returns in ${Math.ceil(w.objective.recoveryT)}s`
+                : ""}
+            </span>
+            {w?.objective && (
+              <progress
+                aria-label="Objective capture progress"
+                max={w.objective.captureSeconds}
+                value={w.objective.progress}
+              />
+            )}
+          </div>
+          <canvas
+            ref={minimap}
+            width="240"
+            height="164"
+            aria-label="Minimap. Yellow marks your character; pale square marks the Constitution Book."
+          />
+          {actualRole === "watcher" && (
+            <>
+              <div className="view-controls">
+                <button
+                  aria-label="Zoom out"
+                  onClick={() => {
+                    camera.current.targetZoom = clampZoom(
+                      "watcher",
+                      camera.current.targetZoom - 0.15,
+                    );
+                  }}
+                >
+                  −
+                </button>
+                <button
+                  aria-label="Zoom in"
+                  onClick={() => {
+                    camera.current.targetZoom = clampZoom(
+                      "watcher",
+                      camera.current.targetZoom + 0.15,
+                    );
+                  }}
+                >
+                  +
+                </button>
+                <button
+                  disabled={!selected}
+                  onClick={() => {
+                    follow.current = !follow.current;
+                    setFollowing(follow.current);
+                  }}
+                >
+                  {following ? "Stop following" : "Follow selected"}
+                </button>
+              </div>
+              <label className="inspect-label">
+                Public location
+                <select
+                  value={w?.map.id ?? mapId}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    send({
+                      type: "observe",
+                      mapId: event.target.value as MapId,
+                    })
+                  }
+                >
+                  <option value="delhi">Jantar Mantar, New Delhi</option>
+                  <option value="paris">Place de la République, Paris</option>
+                </select>
+              </label>
+            </>
+          )}
+        </div>
+        <div className="hud-section" hidden={hudTab !== "people"}>
+          <p className="muted">
+            Select someone in the city or choose a person below. Their state
+            comes from the shared simulation.
+          </p>
+          <label className="inspect-label">
+            Inspect person
+            <select
+              value={selectedId ?? ""}
+              onChange={(event) =>
+                select(event.target.value ? Number(event.target.value) : null)
+              }
+            >
+              <option value="">Choose a person</option>
+              {w?.entities
+                .filter(
+                  (e) =>
+                    !e.remove &&
+                    e.kind !== "truck" &&
+                    e.kind !== "crate" &&
+                    e.buildingId === p?.buildingId,
+                )
+                .map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} / {e.kind}
+                    {e.wanted > 0 ? " · Wanted " + e.wanted : ""}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {selected && (
+            <div className="selected-unit">
+              <b>{selected.name}</b>
+              <span>
+                {selected.kind} · {selected.state} · HP{" "}
+                {Math.round(selected.hp)}
+              </span>
+            </div>
+          )}
+          {!selected && (
+            <p className="muted">
+              No person selected. Choose a person to see their role, health and
+              current behavior.
             </p>
-          ))}
-        </details>
+          )}
+        </div>
+        <div className="hud-section" hidden={hudTab !== "news"}>
+          <details className="feed" open>
+            <summary>World news</summary>
+            {w?.feed.slice(0, 5).map((event, index) => (
+              <p key={`${event.t}:${index}`} data-tone={event.tone}>
+                {event.text}
+              </p>
+            ))}
+          </details>
+        </div>
         <div className="view-controls">
-          <button onClick={() => togglePanel("rankings")}>Rankings</button>
+          <button onClick={() => togglePanel("rankings")}>
+            Career &amp; rankings
+          </button>
         </div>
         <p className="perf">
           {frameMs.toFixed(1)} ms render work · {w?.entities.length ?? 0}{" "}
           entities · Server tick {snapshot?.tick ?? 0}
         </p>
       </aside>
+      {marketOpen && actualRole === "watcher" && snapshot && (
+        <MarketDesk
+          snapshot={snapshot}
+          selected={selected}
+          disabled={disabled}
+          notice={notice || (!online ? status : "")}
+          send={send}
+          onClose={closeMarket}
+        />
+      )}
       <div className="game-bottom">
         <p>
           <strong className="interaction-prompt">
@@ -1123,7 +1000,13 @@ export default function GameScreen({
             )}
           </div>
         )}
-        <div className="touch-pad" aria-label="Movement controls">
+        <div
+          className="touch-pad"
+          aria-label={
+            actualRole === "watcher" ? "Camera controls" : "Movement controls"
+          }
+          hidden={marketOpen}
+        >
           {(
             [
               ["up", "↑"],
@@ -1153,16 +1036,18 @@ export default function GameScreen({
               {label}
             </button>
           ))}
-          <button
-            disabled={disabled || deathActive}
-            aria-pressed={running}
-            onClick={() => {
-              input.current.sprint = !input.current.sprint;
-              setRunning(input.current.sprint);
-            }}
-          >
-            Run
-          </button>
+          {actualRole !== "watcher" && (
+            <button
+              disabled={disabled || deathActive}
+              aria-pressed={running}
+              onClick={() => {
+                input.current.sprint = !input.current.sprint;
+                setRunning(input.current.sprint);
+              }}
+            >
+              Run
+            </button>
+          )}
         </div>
       </div>
       {deathActive && (
@@ -1276,6 +1161,28 @@ export default function GameScreen({
         )}
         {panel === "rankings" && (
           <>
+            <div className="career-summary">
+              <p className="eyebrow">
+                YOUR CAREER · {snapshot?.self.name ?? name}
+              </p>
+              <div className="stats">
+                <span>
+                  <b>{snapshot?.self.score ?? 0}</b>TOTAL SCORE
+                </span>
+                <span>
+                  <b>{snapshot?.self.detentions ?? 0}</b>DETENTIONS
+                </span>
+                <span>
+                  <b>{snapshot?.self.penalties ?? 0}</b>PENALTIES
+                </span>
+              </div>
+              <p className="muted">
+                Police score {snapshot?.self.policeScore ?? 0} · Crowd score{" "}
+                {snapshot?.self.protesterScore ?? 0} · Spectator result{" "}
+                {snapshot?.self.watcherProfit ?? 0}. Your guest career belongs
+                to this browser identity.
+              </p>
+            </div>
             <p>
               Military selection in {Math.ceil(snapshot?.appointmentIn ?? 0)}s.
             </p>
