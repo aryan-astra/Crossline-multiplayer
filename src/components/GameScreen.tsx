@@ -92,6 +92,11 @@ export default function GameScreen({
   const [running, setRunning] = useState(false);
   const [hudCollapsed, setHudCollapsed] = useState(true);
   const [marketOpen, setMarketOpen] = useState(false);
+  const [leadersOpen, setLeadersOpen] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 900px)").matches,
+  );
 
   const select = (id: number | null) => {
     selectedRef.current = id;
@@ -222,7 +227,12 @@ export default function GameScreen({
                 (pointer.current.y - (canvas.current?.clientHeight ?? 0) / 2) /
                   camera.current.zoom,
             }
-          : (w?.player ?? { x: 0, y: 0 });
+          : w?.player
+            ? {
+                x: w.player.x + Math.cos(w.player.dir) * 240,
+                y: w.player.y + Math.sin(w.player.dir) * 240,
+              }
+            : { x: 0, y: 0 };
       connection.send({
         type: "input",
         input: {
@@ -666,6 +676,43 @@ export default function GameScreen({
           <button onClick={() => togglePanel("menu")}>Menu</button>
         </nav>
       </header>
+      {!marketOpen && snapshot && (
+        <details
+          className="live-leaderboard"
+          open={leadersOpen}
+          onToggle={(e) => setLeadersOpen(e.currentTarget.open)}
+        >
+          <summary>Leaderboard</summary>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Player</th>
+                <th scope="col">Score</th>
+                <th scope="col">Credits</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.rankings.slice(0, 5).map((r, index) => (
+                <tr
+                  key={r.id}
+                  aria-current={r.id === snapshot.self.id ? "true" : undefined}
+                >
+                  <td>
+                    <span>
+                      {index + 1}. {r.name}
+                    </span>
+                  </td>
+                  <td>{Math.round(r.score)}</td>
+                  <td>{r.credits}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {snapshot.rankings.length === 0 && (
+            <p>No scores yet. Join the city to begin.</p>
+          )}
+        </details>
+      )}
       {!marketOpen && (notice || status !== "Connected") && (
         <div className="game-toast" role="status">
           {notice || status}
@@ -698,28 +745,37 @@ export default function GameScreen({
           ))}
         </nav>
         <div className="hud-section" hidden={hudTab !== "overview"}>
+          <canvas
+            ref={minimap}
+            width="240"
+            height="164"
+            aria-label="Minimap. Yellow marks your character; pale square marks the Constitution Book."
+          />
           <p role="status" className="muted">
             {notice ||
               (online
                 ? "Shared simulation active. Your progress is server-owned."
                 : "Connecting to the local game server…")}
           </p>
-          <div className="stats">
-            <span>
-              <b>{actualRole === "watcher" ? "—" : Math.round(p?.hp ?? 0)}</b>
-              HEALTH
-            </span>
-            <span>
-              <b>
-                {symbol}
-                {(snapshot?.self.credits ?? 0).toFixed(0)}
-              </b>
-              GAME CREDITS
-            </span>
-            <span>
-              <b>{snapshot?.self.score ?? 0}</b>SCORE
-            </span>
-          </div>
+          {actualRole !== "watcher" && (
+            <div className="stats">
+              <span>
+                <b>{Math.round(p?.hp ?? 0)}</b>
+                HEALTH
+              </span>
+              <span>
+                <b>
+                  {actualRole === "protester"
+                    ? (p?.stones ?? 0)
+                    : (p?.gas ?? 0)}
+                </b>
+                {actualRole === "protester" ? "STONES" : "GAS"}
+              </span>
+              <span>
+                <b>{snapshot?.self.score ?? 0}</b>SCORE
+              </span>
+            </div>
+          )}
           {p && (
             <>
               <label className="meter">
@@ -763,7 +819,9 @@ export default function GameScreen({
                   </button>
                 </>
               ) : (
-                <span>No active dispatch. Protect the Constitution Book.</span>
+                <span>
+                  No active dispatch. Patrol and respond to immediate threats.
+                </span>
               )}
               <small>
                 Detain only if actively violent; wanted status alone is not
@@ -795,12 +853,6 @@ export default function GameScreen({
               />
             )}
           </div>
-          <canvas
-            ref={minimap}
-            width="240"
-            height="164"
-            aria-label="Minimap. Yellow marks your character; pale square marks the Constitution Book."
-          />
           {actualRole === "watcher" && (
             <>
               <div className="view-controls">
@@ -965,7 +1017,7 @@ export default function GameScreen({
                 ? "Warn"
                 : actualRole === "police"
                   ? "Baton"
-                  : "Throw"}
+                  : `Throw (${p?.stones ?? 0})`}
             </button>
             {actualRole === "police" && (
               <button

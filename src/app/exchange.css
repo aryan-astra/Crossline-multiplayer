@@ -1,0 +1,182 @@
+/* Exchange-only refinements; game.css owns the shared shell and color tokens. */
+.market-desk {
+  width: min(860px, calc(100% - 32px));
+  max-height: calc(100% - 16px);
+  align-self: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.market-desk .desk-heading {
+  margin-bottom: var(--space-xs);
+}
+.market-desk .desk-heading h2 {
+  font-size: 28px;
+}
+.market-desk .desk-heading > button {
+  min-width: 76px;
+}
+.market-desk .desk-notice {
+  min-height: 0;
+}
+.market-desk .desk-tabs {
+  gap: 0;
+  padding-bottom: 0;
+  margin: 0 0 var(--space-s);
+}
+.market-desk .desk-tabs button {
+  flex: 0 1 auto;
+  min-width: 112px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+}
+.market-desk .desk-tabs button[aria-pressed="true"] {
+  border-bottom-color: var(--accent);
+}
+.market-desk .desk-content {
+  padding-right: 2px;
+}
+.market-desk .desk-balance {
+  gap: var(--space-l);
+}
+.market-desk .desk-balance > span {
+  flex: 1;
+}
+.market-desk .desk-balance b {
+  font-size: 20px;
+}
+.market-desk .quote-layout {
+  grid-template-columns: 154px minmax(0, 1fr);
+  gap: var(--space-m);
+}
+.market-desk .quote-list {
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+.market-desk .quote-list button {
+  align-items: center;
+  padding: 10px 8px;
+  border-width: 0 0 1px;
+  border-color: var(--line);
+  border-radius: 0;
+}
+.market-desk .quote-list button > span:last-child {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.market-desk .quote-list small {
+  font-size: 11px;
+}
+.market-desk .quote-detail {
+  min-width: 0;
+}
+.market-desk .quote-detail > .eyebrow {
+  margin: 0;
+}
+.market-desk .quote-price {
+  margin: 0 0 var(--space-xs);
+}
+.market-desk .quote-price strong {
+  font-size: 30px;
+}
+.market-desk .market-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: var(--space-s) 0;
+  margin: 0;
+  background: var(--panel);
+}
+.market-desk .market-actions button {
+  min-height: 44px;
+}
+.market-desk .quote-detail > .muted {
+  margin: var(--space-xs) 0;
+}
+.market-desk .quote-chart {
+  height: 88px;
+  margin: var(--space-xs) 0;
+}
+.market-desk .chart-range {
+  font-size: 11px;
+}
+.market-desk .portfolio-table {
+  margin-top: var(--space-m);
+}
+.market-desk .portfolio-table caption {
+  text-align: left;
+  color: var(--muted);
+}
+.market-desk .prediction-list {
+  gap: 0 var(--space-l);
+}
+.market-desk .prediction-list article {
+  padding: var(--space-s) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+.market-desk .prediction-list article > p {
+  margin: var(--space-xs) 0;
+}
+.market-desk .prediction-list button {
+  min-height: 42px;
+}
+
+@media (max-width: 600px) {
+  .market-desk {
+    width: 100%;
+    max-height: calc(100% - 8px);
+    padding: var(--space-s);
+  }
+  .market-desk .desk-heading h2 {
+    font-size: 24px;
+  }
+  .market-desk .desk-tabs button {
+    min-width: 0;
+    flex: 1;
+    padding-inline: 4px;
+  }
+  .market-desk .desk-balance {
+    gap: var(--space-s);
+  }
+  .market-desk .desk-balance > span {
+    font-size: 10px;
+  }
+  .market-desk .desk-balance b {
+    font-size: 16px;
+  }
+  .market-desk .quote-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-s);
+  }
+  .market-desk .quote-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .market-desk .quote-list button {
+    min-width: 0;
+    padding: 6px;
+  }
+  .market-desk .quote-list b {
+    font-size: 14px;
+  }
+  .market-desk .quote-detail h3 {
+    font-size: 18px;
+  }
+  .market-desk .quote-price strong {
+    font-size: 26px;
+  }
+  .market-desk .quote-chart {
+    height: 64px;
+  }
+  .market-desk .market-actions {
+    gap: var(--space-xs);
+  }
+  .market-desk .market-actions button {
+    padding: var(--space-s) 4px;
+    font-size: 12px;
+  }
+}

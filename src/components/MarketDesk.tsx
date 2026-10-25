@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { Command, Snapshot } from "@/network/protocol";
 import type { Entity } from "@/game/types";
 import { portfolioValue, quoteView } from "@/game/market-view";
+import "../app/exchange.css";
 
 const contracts = [
   {
