@@ -1,10 +1,62 @@
 /* Exchange-only refinements; game.css owns the shared shell and color tokens. */
 .market-desk {
-  width: min(860px, calc(100% - 32px));
+  width: min(660px, calc(100% - 32px));
   max-height: calc(100% - 16px);
   align-self: center;
   border: 1px solid var(--line);
   background: var(--panel);
+}
+.market-desk .quote-layout {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+.market-desk .desk-balance {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: var(--space-s);
+  margin-bottom: var(--space-s);
+}
+.market-desk .desk-balance b {
+  font-size: 20px;
+}
+.market-desk .market-candle {
+  color: var(--negative);
+}
+.market-desk .market-candle[data-up="true"] {
+  color: var(--positive);
+}
+.market-desk .market-candle line {
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.market-desk .market-candle rect {
+  fill: currentColor;
+}
+.supply-group {
+  border: 0;
+  padding: 0;
+  margin: var(--space-s) 0;
+  min-width: 0;
+}
+.supply-group legend {
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: var(--space-s);
+}
+.supply-group button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-m);
+  width: 100%;
+  text-align: left;
+  margin-bottom: var(--space-xs);
+}
+.supply-group small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--type-small);
+}
+.supply-group b {
+  white-space: nowrap;
 }
 
 .market-desk .desk-heading {

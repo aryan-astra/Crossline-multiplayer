@@ -1,4 +1,5 @@
 import type { Role, World } from "./types";
+import { placeName } from "./place-names";
 
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
@@ -12,7 +13,7 @@ export function interactionPrompt(world: World | undefined, role: Role) {
     const building = world.map.buildings.find(
       (item) => item.id === player.buildingId,
     );
-    return `B · Leave ${building?.name ?? "the building"}`;
+    return `B · Leave ${building?.name ? placeName(building.name) : "the building"}${building?.kind === "shop" ? " · F loot food" : ""}`;
   }
 
   const doorway = world.map.buildings
@@ -21,7 +22,7 @@ export function interactionPrompt(world: World | undefined, role: Role) {
       (a, b) => distance(player, a.entrance!) - distance(player, b.entrance!),
     )[0];
   if (doorway?.entrance && distance(player, doorway.entrance) <= 36)
-    return `B · Enter ${doorway.name ?? "building"}`;
+    return `B · Enter ${doorway.name ? placeName(doorway.name) : "building"}${doorway.kind === "shop" ? " · F loot food" : ""}`;
 
   const resource = world.resources?.find(
     (item) =>

@@ -22,6 +22,16 @@ test("quote presentation keeps empty and flat histories finite and chart bounds 
   }
   assert.equal(quoteView(item).buy, 21);
   assert.equal(quoteView(item).sell, 19);
+  const candles = quoteView({
+    ...item,
+    history: Array.from({ length: 80 }, (_, i) => i + 1),
+  }).candles;
+  assert.equal(candles.length, 20);
+  assert.deepEqual(
+    [candles[0].open, candles[0].close, candles[0].low, candles[0].high],
+    [1, 4, 1, 4],
+  );
+  assert.deepEqual([candles.at(-1)!.open, candles.at(-1)!.close], [77, 80]);
   assert.ok(
     Math.abs(portfolioValue([item], { calm: 3, unknown: 100 }) - 61.2) < 1e-9,
   );

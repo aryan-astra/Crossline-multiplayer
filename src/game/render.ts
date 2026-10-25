@@ -1,5 +1,6 @@
 import type { World, Entity, MapDef, Building } from "./types";
 import { isWalkable } from "./maps";
+import { placeName } from "./place-names";
 
 const SKINS = ["#e8b98d", "#c98e5f", "#a5673f", "#8a5232", "#f0c9a0"];
 const PROTEST_CLOTH = [
@@ -114,8 +115,8 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
     if (l.text === "SANSAD MARG") {
       g.translate(l.x, l.y);
       g.rotate(-Math.PI / 2);
-      g.fillText(l.text, 0, 0);
-    } else g.fillText(l.text, l.x, l.y);
+      g.fillText(placeName(l.text), 0, 0);
+    } else g.fillText(placeName(l.text), l.x, l.y);
     g.restore();
   }
   // depot pads
@@ -203,6 +204,30 @@ function drawBuilding(
   time: number,
   player?: Entity | null,
 ) {
+  if (b.barricade) {
+    g.fillStyle = b.broken ? "#998361" : "#e7b94c";
+    g.fillRect(b.x, b.y + (b.broken ? 12 : 0), b.w, b.broken ? 5 : b.h);
+    if (!b.broken) {
+      g.strokeStyle = "#423e32";
+      g.lineWidth = 3;
+      for (let x = 4; x < b.w - 3; x += 10) {
+        g.beginPath();
+        g.moveTo(b.x + x, b.y + 3);
+        g.lineTo(b.x + x - 3, b.y + b.h - 3);
+        g.stroke();
+      }
+      g.fillStyle = "#292c29";
+      g.fillRect(b.x + 3, b.y + b.h, 5, 4);
+      g.fillRect(b.x + b.w - 8, b.y + b.h, 5, 4);
+      if (b.hp < b.maxHp) {
+        g.fillStyle = "#161d20";
+        g.fillRect(b.x, b.y - 6, b.w, 3);
+        g.fillStyle = "#edbd63";
+        g.fillRect(b.x, b.y - 6, (b.w * b.hp) / b.maxHp, 3);
+      }
+    }
+    return;
+  }
   const palette = buildingPalette(b, map);
   if (b.footprint) {
     const height = b.kind === "shop" ? 20 : map.ambience === "paris" ? 42 : 32;
@@ -243,7 +268,7 @@ function drawBuilding(
       g.fillStyle = "rgba(35,32,28,0.7)";
       g.textAlign = "center";
       g.fillText(
-        b.name,
+        placeName(b.name),
         b.x + b.w / 2,
         b.y + b.h / 2 - height - 3,
         Math.min(b.w, 150),
@@ -406,7 +431,7 @@ function drawRoof(
       g.font = "600 11px 'Barlow', sans-serif";
       g.fillStyle = "rgba(40,35,25,0.65)";
       g.textAlign = "center";
-      g.fillText(b.name, b.x + b.w / 2, b.y + b.h / 2 + 4);
+      g.fillText(placeName(b.name), b.x + b.w / 2, b.y + b.h / 2 + 4);
     }
     return;
   }
@@ -464,7 +489,7 @@ function drawRoof(
     g.font = "700 11px 'Barlow', sans-serif";
     g.fillStyle = b.broken ? "rgba(255,255,255,0.4)" : "rgba(50,40,25,0.85)";
     g.textAlign = "center";
-    g.fillText(b.name, b.x + b.w / 2, b.y + b.h / 2 + 2);
+    g.fillText(placeName(b.name), b.x + b.w / 2, b.y + b.h / 2 + 2);
   }
 }
 
@@ -698,7 +723,7 @@ function drawMonument(g: CanvasRenderingContext2D, b: Building, time: number) {
     g.font = "600 11px 'Barlow', sans-serif";
     g.fillStyle = "rgba(60,35,15,0.7)";
     g.textAlign = "center";
-    g.fillText(b.name, cx, b.y + b.h + 18);
+    g.fillText(placeName(b.name), cx, b.y + b.h + 18);
   }
 }
 
@@ -1071,6 +1096,37 @@ function drawTruck(g: CanvasRenderingContext2D, e: Entity, time: number) {
 }
 
 function drawCrate(g: CanvasRenderingContext2D, e: Entity, time: number) {
+  if (
+    e.roadsidePickup &&
+    (e.crateItem === "stones" ||
+      e.crateItem === "stick" ||
+      e.crateItem === "bat")
+  ) {
+    g.fillStyle = "rgba(245,226,157,0.12)";
+    g.beginPath();
+    g.arc(e.x, e.y, 14, 0, Math.PI * 2);
+    g.fill();
+    if (e.crateItem === "stones") {
+      g.fillStyle = "#d7ddd4";
+      for (const [x, y, r] of [
+        [-4, 0, 4],
+        [3, -4, 3],
+        [4, 4, 3],
+      ]) {
+        g.beginPath();
+        g.arc(e.x + x, e.y + y, r, 0, Math.PI * 2);
+        g.fill();
+      }
+    } else {
+      g.strokeStyle = e.crateItem === "bat" ? "#dab87b" : "#997556";
+      g.lineWidth = e.crateItem === "bat" ? 5 : 3;
+      g.beginPath();
+      g.moveTo(e.x - 6, e.y + 7);
+      g.lineTo(e.x + 6, e.y - 7);
+      g.stroke();
+    }
+    return;
+  }
   const glow = 0.5 + Math.sin(time * 4 + e.id) * 0.3;
   g.fillStyle = `rgba(255,215,94,${glow * 0.25})`;
   g.beginPath();
@@ -1145,7 +1201,7 @@ function drawInterior(
     ctx,
     cw / 2,
     35,
-    `${building.name ?? "PUBLIC BUILDING"} · INTERIOR`,
+    `${building.name ? placeName(building.name) : "PUBLIC BUILDING"} · INTERIOR`,
     "#eee1bd",
   );
 }
@@ -1477,19 +1533,16 @@ export function drawFrame(
 }
 
 /* ------------ minimap ------------ */
-export function drawMinimap(
+function drawMinimapGround(
   ctx: CanvasRenderingContext2D,
   w: World,
   mw: number,
   mh: number,
-  viewWidth: number,
-  viewHeight: number,
-  dispatch?: { x: number; y: number },
 ) {
   const sx = mw / w.map.w,
     sy = mh / w.map.h;
   ctx.clearRect(0, 0, mw, mh);
-  ctx.fillStyle = w.map.ambience === "delhi" ? "#8a7550" : "#6e6b64";
+  ctx.fillStyle = "#243c3d";
   ctx.fillRect(0, 0, mw, mh);
   ctx.fillStyle = "rgba(0,0,0,0.35)";
   for (const road of w.map.roadWays ?? []) {
@@ -1503,6 +1556,7 @@ export function drawMinimap(
     ctx.stroke();
   }
   for (const b of w.map.buildings) {
+    if (b.barricade) continue;
     ctx.beginPath();
     const ring = b.footprint ?? [
       { x: b.x, y: b.y },
@@ -1514,9 +1568,66 @@ export function drawMinimap(
       i === 0 ? ctx.moveTo(p.x * sx, p.y * sy) : ctx.lineTo(p.x * sx, p.y * sy),
     );
     ctx.closePath();
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillStyle = "#6e8781";
     ctx.fill();
   }
+}
+const minimapGrounds = new WeakMap<
+  object,
+  {
+    canvas: HTMLCanvasElement;
+    width: number;
+    height: number;
+    buildings: number;
+  }
+>();
+export function drawMinimap(
+  ctx: CanvasRenderingContext2D,
+  w: World,
+  mw: number,
+  mh: number,
+  viewWidth: number,
+  viewHeight: number,
+  dispatch?: { x: number; y: number },
+) {
+  const sx = mw / w.map.w,
+    sy = mh / w.map.h;
+  const key = w.map.roadWays ?? w.map.buildings;
+  if (typeof document === "undefined") drawMinimapGround(ctx, w, mw, mh);
+  else {
+    let cached = minimapGrounds.get(key);
+    if (
+      !cached ||
+      cached.width !== mw ||
+      cached.height !== mh ||
+      cached.buildings !== w.map.buildings.length
+    ) {
+      const canvas = document.createElement("canvas");
+      canvas.width = mw;
+      canvas.height = mh;
+      const background = canvas.getContext("2d");
+      if (background) drawMinimapGround(background, w, mw, mh);
+      cached = {
+        canvas,
+        width: mw,
+        height: mh,
+        buildings: w.map.buildings.length,
+      };
+      minimapGrounds.set(key, cached);
+    }
+    ctx.clearRect(0, 0, mw, mh);
+    ctx.drawImage(cached.canvas, 0, 0);
+  }
+  for (const b of w.map.buildings)
+    if (b.barricade && !b.broken) {
+      ctx.fillStyle = "#edbd63";
+      ctx.fillRect(
+        b.x * sx,
+        b.y * sy,
+        Math.max(2, b.w * sx),
+        Math.max(2, b.h * sy),
+      );
+    }
   for (const e of w.entities) {
     if (e.remove || e.buildingId || e.kind === "crate" || e.kind === "truck")
       continue;

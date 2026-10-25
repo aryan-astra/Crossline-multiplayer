@@ -18,6 +18,8 @@ import { entryPoint, type AreaId } from "@/game/locations";
 import { connectWorld, isStaleSnapshot } from "@/network/client";
 import type { Command, Snapshot } from "@/network/protocol";
 import type { InputState, MapId, Role, World } from "@/game/types";
+import { CITY_NAMES } from "@/game/place-names";
+import { predictCharacter } from "@/game/prediction";
 
 const emptyInput = (): InputState => ({
   up: false,
@@ -71,19 +73,20 @@ export default function GameScreen({
   const follow = useRef(false);
   const commandRef = useRef(false);
   const paused = useRef(false);
-  const qualityRef = useRef(2);
+  const qualityRef = useRef(1);
   const audio = useRef<AudioContext | null>(null);
   const sound = useRef<DirectionalEventAudio | null>(null);
   const volumeRef = useRef(0);
   const sendRef = useRef<(command: Command) => boolean>(() => false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState("Connecting");
+  const statusRef = useRef("Connecting");
   const [notice, setNotice] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [following, setFollowing] = useState(false);
   const [command, setCommand] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
-  const [quality, setQuality] = useState(2);
+  const [quality, setQuality] = useState(1);
   const [volume, setVolume] = useState(0);
   const [frameMs, setFrameMs] = useState(0);
   const [hudTab, setHudTab] = useState<"overview" | "people" | "news">(
@@ -174,6 +177,7 @@ export default function GameScreen({
         areaId,
       }),
       onStatus: (next) => {
+        statusRef.current = next;
         if (!stopped) {
           if (next !== "Connected") connectionEpoch++;
           if (next !== "Connected") sound.current?.resetHistory();
@@ -263,6 +267,7 @@ export default function GameScreen({
     let frame = 0,
       last = performance.now(),
       metricAt = last,
+      miniAt = 0,
       total = 0,
       frames = 0;
     let shownMap: MapId | undefined, shownRole: Role | undefined;
@@ -285,7 +290,10 @@ export default function GameScreen({
           view.height = Math.round(height * dpr);
         }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (!grounds.has(w.map.id)) grounds.set(w.map.id, buildGround(w.map));
+        if (!grounds.has(w.map.id)) {
+          grounds.clear();
+          grounds.set(w.map.id, buildGround(w.map));
+        }
         const alpha = Math.min(1, (now - receivedAt.current) / 100);
         const prior = previous.current?.world;
         const oldEntities = new Map(
@@ -294,6 +302,18 @@ export default function GameScreen({
             : [],
         );
         const entities = w.entities.map((e) => {
+          if (
+            e.id === w.player?.id &&
+            actualRole !== "watcher" &&
+            !paused.current &&
+            statusRef.current === "Connected"
+          )
+            return predictCharacter(
+              w.map,
+              e,
+              input.current,
+              (now - receivedAt.current) / 1000 + 1 / 30,
+            );
           const old = oldEntities.get(e.id);
           return old &&
             old.buildingId === e.buildingId &&
@@ -352,15 +372,18 @@ export default function GameScreen({
           time: w.time + Math.min(0.15, (now - receivedAt.current) / 1000),
         };
         drawFrame(ctx, presentation, width, height, grounds.get(w.map.id)!);
-        drawMinimap(
-          miniCtx,
-          presentation,
-          mini.width,
-          mini.height,
-          width,
-          height,
-          latest.current?.policeTask,
-        );
+        if (now - miniAt >= 100) {
+          drawMinimap(
+            miniCtx,
+            presentation,
+            mini.width,
+            mini.height,
+            width,
+            height,
+            latest.current?.policeTask,
+          );
+          miniAt = now;
+        }
         total += performance.now() - start;
         frames++;
         if (now - metricAt > 1000) {
@@ -629,17 +652,12 @@ export default function GameScreen({
               height={24}
               alt=""
             />{" "}
-            <span>
-              {w
-                ? w.map.id === "paris"
-                  ? "Paris"
-                  : "New Delhi"
-                : "Joining city"}
-            </span>
+            <span>{w ? CITY_NAMES[w.map.id] : "Joining city"}</span>
           </b>
           <span>
             {actualRole === "watcher" ? "SPECTATOR" : actualRole.toUpperCase()}
             {p && ` · HP ${Math.round(p.hp)}`}
+            {p?.shield && ` · Shield ${Math.round(p.shieldHp ?? 50)}`}
           </span>
           <small role="status" className="connection-status">
             {status} · {snapshot?.online ?? 0} online
@@ -676,6 +694,23 @@ export default function GameScreen({
           <button onClick={() => togglePanel("menu")}>Menu</button>
         </nav>
       </header>
+      <div className="floating-minimap" aria-label="Live city map">
+        <canvas
+          ref={minimap}
+          width="240"
+          height="164"
+          aria-label="Minimap. Gold is you; the book marks the objective."
+        />
+        <span>{w ? CITY_NAMES[w.map.id] : "Connecting"}</span>
+      </div>
+      {(actualRole === "police" || actualRole === "military") &&
+        w?.objective &&
+        (w.objective.status === "contested" || w.objective.progress > 0) && (
+          <div className="objective-alarm" role="alert">
+            <strong>THE BOOK IS UNDER THREAT</strong>
+            <span>Return to the defense line</span>
+          </div>
+        )}
       {!marketOpen && snapshot && (
         <details
           className="live-leaderboard"
@@ -745,12 +780,6 @@ export default function GameScreen({
           ))}
         </nav>
         <div className="hud-section" hidden={hudTab !== "overview"}>
-          <canvas
-            ref={minimap}
-            width="240"
-            height="164"
-            aria-label="Minimap. Yellow marks your character; pale square marks the Constitution Book."
-          />
           <p role="status" className="muted">
             {notice ||
               (online
@@ -900,8 +929,12 @@ export default function GameScreen({
                     })
                   }
                 >
-                  <option value="delhi">Jantar Mantar, New Delhi</option>
-                  <option value="paris">Place de la République, Paris</option>
+                  <option value="delhi">
+                    Mantar Jantar, {CITY_NAMES.delhi}
+                  </option>
+                  <option value="paris">
+                    Liberty square, {CITY_NAMES.paris}
+                  </option>
                 </select>
               </label>
             </>
@@ -1019,12 +1052,20 @@ export default function GameScreen({
                   ? "Baton"
                   : `Throw (${p?.stones ?? 0})`}
             </button>
-            {actualRole === "police" && (
+            {(actualRole === "police" ||
+              (actualRole === "protester" && p?.equipment)) && (
               <button
                 disabled={disabled || deathActive}
                 onClick={() => action("special")}
               >
-                T · Gas
+                T ·{" "}
+                {actualRole === "police"
+                  ? "Gas"
+                  : p?.equipment === "firearm"
+                    ? `Fire (${p.ammo ?? 0})`
+                    : p?.equipment === "bat"
+                      ? "Swing bat"
+                      : "Swing stick"}
               </button>
             )}
             <button
@@ -1125,23 +1166,24 @@ export default function GameScreen({
       >
         <h1 id="game-panel-title">
           {panel === "menu"
-            ? "Paused controls"
+            ? "Crossline"
             : panel === "settings"
               ? "Settings"
               : panel === "guide"
                 ? "Field guide"
                 : "Public rankings"}
         </h1>
-        <p className="muted">
-          Your input is paused. The public world continues.
-        </p>
+        <p className="muted">The city keeps moving while you pause.</p>
         {panel === "menu" && (
           <div className="menu-actions">
-            <button onClick={() => togglePanel("guide")}>How to play</button>
-            <button onClick={() => togglePanel("settings")}>Settings</button>
-            <button onClick={() => togglePanel("rankings")}>
-              Career &amp; rankings
+            <button className="primary" onClick={() => togglePanel(null)}>
+              Resume game
             </button>
+            <button onClick={() => togglePanel("guide")}>How to play</button>
+            <button onClick={() => togglePanel("settings")}>
+              Sound &amp; display
+            </button>
+            <button onClick={() => togglePanel("rankings")}>Leaderboard</button>
             <button onClick={onExit}>Leave city</button>
           </div>
         )}
@@ -1261,9 +1303,11 @@ export default function GameScreen({
             </table>
           </>
         )}
-        <button className="primary" onClick={() => togglePanel(null)}>
-          Return to city
-        </button>
+        {panel !== "menu" && (
+          <button className="primary" onClick={() => togglePanel(null)}>
+            Return to city
+          </button>
+        )}
       </dialog>
     </main>
   );

@@ -4,6 +4,7 @@ import type { Command, Snapshot } from "@/network/protocol";
 import type { Entity } from "@/game/types";
 import { portfolioValue, quoteView } from "@/game/market-view";
 import "../app/exchange.css";
+import { SUPPLY_CATALOG } from "@/game/equipment";
 
 const contracts = [
   {
@@ -81,7 +82,10 @@ export default function MarketDesk({
   const fundingBlocked =
     open.length > 0 || Object.values(holdings).some((q) => q > 0);
   const deliveries = w.entities.filter(
-    (e) => !e.remove && (e.kind === "truck" || e.kind === "crate"),
+    (e) =>
+      !e.remove &&
+      !e.roadsidePickup &&
+      (e.kind === "truck" || e.kind === "crate"),
   );
   const quote = item ? quoteView(item) : null;
   return (
@@ -89,14 +93,14 @@ export default function MarketDesk({
       <header className="desk-heading">
         <div>
           <h2 id="market-desk-title">The exchange</h2>
-          <p>Spectator desk · Fictional credits only</p>
+          <p>Spectator desk · Game credits</p>
         </div>
         <button onClick={onClose} aria-label="Close exchange">
           Close ×
         </button>
       </header>
       <p className="desk-notice" role="status">
-        {notice || "Live quotes · Orders settle only after server acceptance."}
+        {notice || "Watch the city. Back your next move."}
       </p>
       <nav className="desk-tabs" aria-label="Exchange sections">
         {(
@@ -143,9 +147,7 @@ export default function MarketDesk({
                   ))}
                 </nav>
                 <article className="quote-detail">
-                  <p className="eyebrow">
-                    {item.ticker} / LIVE SIMULATION QUOTE
-                  </p>
+                  <p className="eyebrow">{item.ticker} / CITY MARKET</p>
                   <h3>{item.name}</h3>
                   <div className="quote-price">
                     <strong>{money(item.price)}</strong>
@@ -202,11 +204,26 @@ export default function MarketDesk({
                   >
                     <line x1="4" x2="396" y1="64" y2="64" />
                     <line x1="4" x2="396" y1="116" y2="116" />
-                    <path d={quote.path} />
+                    {quote.candles.map((c, index) => (
+                      <g
+                        key={index}
+                        className="market-candle"
+                        data-up={c.close >= c.open}
+                      >
+                        <title>{`Open ${money(c.open)}, close ${money(c.close)}, low ${money(c.low)}, high ${money(c.high)}`}</title>
+                        <line x1={c.x} x2={c.x} y1={c.highY} y2={c.lowY} />
+                        <rect
+                          x={c.x - 4}
+                          y={c.top}
+                          width={8}
+                          height={Math.max(2, c.bottom - c.top)}
+                        />
+                      </g>
+                    ))}
                   </svg>
                   <div className="chart-range">
                     <span>Low {money(quote.min)}</span>
-                    <span>{item.history.length} recent quotes</span>
+                    <span>Recent prices · Each bar groups real quotes</span>
                     <span>High {money(quote.max)}</span>
                   </div>
 
@@ -217,7 +234,10 @@ export default function MarketDesk({
                   </p>
                 </article>
               </div>
-              <table className="portfolio-table">
+              <table
+                className="portfolio-table"
+                hidden={!items.some((i) => holdings[i.id] > 0)}
+              >
                 <caption>Your portfolio · current marked value</caption>
                 <thead>
                   <tr>
@@ -227,13 +247,15 @@ export default function MarketDesk({
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((i) => (
-                    <tr key={i.id}>
-                      <td>{i.ticker}</td>
-                      <td>{holdings[i.id] ?? 0}</td>
-                      <td>{money(i.price * (holdings[i.id] ?? 0))}</td>
-                    </tr>
-                  ))}
+                  {items
+                    .filter((i) => holdings[i.id] > 0)
+                    .map((i) => (
+                      <tr key={i.id}>
+                        <td>{i.ticker}</td>
+                        <td>{holdings[i.id] ?? 0}</td>
+                        <td>{money(i.price * (holdings[i.id] ?? 0))}</td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </>
@@ -351,8 +373,8 @@ export default function MarketDesk({
           <>
             <h3>Back a delivery</h3>
             <p className="muted">
-              Fund a truck to replenish a faction’s depot. Each delivery costs
-              20 credits and pauses your trades and predictions for 60 seconds.
+              Choose a loadout. A real truck brings it to the depot. Funding
+              pauses trading for 60 seconds.
             </p>
             {fundingBlocked && (
               <p role="status">
@@ -361,32 +383,57 @@ export default function MarketDesk({
               </p>
             )}
             <div className="supply-actions">
-              <button
-                disabled={
-                  disabled || fundingBlocked || snapshot.self.credits < 20
-                }
-                onClick={() => send({ type: "fund", faction: "protester" })}
-              >
-                Crowd supply · {symbol}20
-              </button>
-              <button
-                disabled={
-                  disabled || fundingBlocked || snapshot.self.credits < 20
-                }
-                onClick={() => send({ type: "fund", faction: "police" })}
-              >
-                Police supply · {symbol}20
-              </button>
+              {(["protester", "police"] as const).map((faction) => (
+                <fieldset className="supply-group" key={faction}>
+                  <legend>
+                    {faction === "protester" ? "Crowd" : "Police"}
+                  </legend>
+                  {SUPPLY_CATALOG.filter(
+                    (option) => option.faction === faction,
+                  ).map((option) => (
+                    <button
+                      key={option.kind}
+                      disabled={
+                        disabled ||
+                        fundingBlocked ||
+                        snapshot.self.credits < option.price
+                      }
+                      onClick={() =>
+                        send({ type: "fund", faction, kind: option.kind })
+                      }
+                    >
+                      <span>
+                        {option.name}
+                        <small>
+                          {option.kind === "essentials"
+                            ? "Food, water & first aid"
+                            : option.kind === "arms"
+                              ? "Rare sidearm · Limited ammunition"
+                              : faction === "police"
+                                ? "Shields & support gear"
+                                : "Sticks, bats & protection"}
+                        </small>
+                      </span>
+                      <b>{option.price} cr</b>
+                    </button>
+                  ))}
+                </fieldset>
+              ))}
             </div>
             <h3>Live deliveries in this city</h3>
             {deliveries.length ? (
               deliveries.map((e) => (
                 <div className="desk-record" key={e.id}>
                   <div>
-                    {e.truckFaction ?? e.crateFaction ?? "City"} supply #{e.id}
+                    {(e.truckFaction ?? e.crateFaction) === "police"
+                      ? "Police"
+                      : "Crowd"}{" "}
+                    supplies
                     <br />
                     <span>
-                      World position {Math.round(e.x)}, {Math.round(e.y)}
+                      {e.kind === "truck"
+                        ? "Heading to the depot"
+                        : "Ready to collect at the depot"}
                     </span>
                   </div>
                   <b>{e.kind === "truck" ? "En route" : "At depot"}</b>

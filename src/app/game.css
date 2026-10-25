@@ -40,6 +40,53 @@
 .command-cursor {
   cursor: crosshair;
 }
+.floating-minimap {
+  position: absolute;
+  left: var(--space-m);
+  bottom: var(--space-l);
+  z-index: 2;
+  width: 200px;
+  overflow: hidden;
+  border: 1px solid #eab86666;
+  border-radius: 8px;
+  background: #14181be8;
+  pointer-events: none;
+}
+.floating-minimap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.floating-minimap > span {
+  display: block;
+  padding: var(--space-xs) var(--space-s);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.objective-alarm {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border: 3px solid #e35d58;
+  box-shadow: inset 0 0 64px #b92d2d55;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 88px;
+  color: #fff0d5;
+  font-size: 12px;
+}
+.objective-alarm strong,
+.objective-alarm > span {
+  background: #742c2be8;
+  padding: var(--space-xs) var(--space-m);
+}
+.objective-alarm strong {
+  letter-spacing: 0.12em;
+}
 .game-shell button,
 .game-shell select,
 .game-shell input {
@@ -158,7 +205,7 @@
   align-self: start;
   justify-self: start;
   width: 320px;
-  max-height: min(65dvh, 100%);
+  max-height: min(52dvh, calc(100dvh - 304px));
   min-height: 0;
   overflow: auto;
   padding: var(--space-m);
@@ -482,11 +529,11 @@ progress::-moz-progress-bar {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(640px, calc(100% - 32px));
+  width: min(420px, calc(100% - 32px));
   max-height: calc(100dvh - 48px);
   overflow: auto;
   margin: 0;
-  padding: var(--space-xl);
+  padding: var(--space-l);
   background: var(--panel);
   color: var(--cream);
   border: 1px solid var(--line);
@@ -739,6 +786,18 @@ progress::-moz-progress-bar {
   }
 }
 @media (max-width: 600px) {
+  .floating-minimap {
+    width: 112px;
+    bottom: 216px;
+    left: var(--space-s);
+  }
+  .floating-minimap > span {
+    padding: 2px var(--space-xs);
+    font-size: 9px;
+  }
+  .objective-alarm {
+    padding-top: 128px;
+  }
   .game-shell {
     padding: var(--space-s);
     gap: var(--space-s);
@@ -866,7 +925,7 @@ progress::-moz-progress-bar {
     text-align: center;
   }
   .game-shell:is([data-role="police"], [data-role="military"]) .game-bottom p {
-    bottom: 208px;
+    bottom: 264px;
   }
 }
 @media (max-height: 500px) {

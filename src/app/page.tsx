@@ -8,6 +8,7 @@ import { AREAS, type AreaId } from "@/game/locations";
 import type { MapId, Role } from "@/game/types";
 import type { Profile } from "@/network/protocol";
 import "./menu.css";
+import { CITY_NAMES, placeName } from "@/game/place-names";
 
 const GameScreen = dynamic(() => import("@/components/GameScreen"), {
   loading: () => (
@@ -23,16 +24,16 @@ const GameScreen = dynamic(() => import("@/components/GameScreen"), {
 const cities = [
   {
     id: "delhi" as const,
-    name: "New Delhi",
-    area: "Jantar Mantar",
+    name: CITY_NAMES.delhi,
+    area: "Mantar Jantar",
     image: "/img/crossline-delhi.png",
     description:
       "Sandstone observatories. Narrow streets. A gathering finding its voice.",
   },
   {
     id: "paris" as const,
-    name: "Paris",
-    area: "Place de la République",
+    name: CITY_NAMES.paris,
+    area: "Republic quarter",
     image: "/img/crossline-paris.png",
     description: "Broad boulevards. Café lights. All eyes on the square.",
   },
@@ -69,18 +70,11 @@ const roles: {
     control: "Appointment required",
   },
 ];
-const steps = ["Name", "City", "Area", "Role"];
-const headings = [
-  "Make yourself known.",
-  "Choose your city.",
-  "Find your way in.",
-  "Where do you stand?",
-];
+const steps = ["Your city", "Your side"];
+const headings = ["Make your entrance.", "Choose your side."];
 const descriptions = [
-  "One callsign. Your place in the crowd.",
-  "Two real street layouts. Two different kinds of tension.",
-  "Choose an entry area for a new character. Saved characters resume where they left off.",
-  "One shared city. Every role changes how you play.",
+  "A callsign. A city. Your story starts here.",
+  "Pick a role and an entry point. Saved characters resume in place.",
 ];
 
 export default function Home() {
@@ -93,6 +87,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [playing, setPlaying] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [serverMode, setServerMode] = useState<"lan" | "online" | null>(null);
+  const [onlineUrl, setOnlineUrl] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [connection, setConnection] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -104,6 +100,20 @@ export default function Home() {
     let active = true;
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), 10000);
+    fetch("/api/connection", { signal: abort.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error("Server mode unavailable");
+        return r.json();
+      })
+      .then((data) => {
+        if (active && ["lan", "online"].includes(data.mode)) {
+          setServerMode(data.mode);
+          setOnlineUrl(data.onlineUrl ?? null);
+        }
+      })
+      .catch(() => {
+        if (active) setServerMode(null);
+      });
     fetch("/api/session", { cache: "no-store", signal: abort.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Connection unavailable");
@@ -142,7 +152,7 @@ export default function Home() {
       return;
     }
     setError("");
-    if (step < 3) setStep(step + 1);
+    if (step < 1) setStep(step + 1);
     else if (!profile || connection !== "ready")
       setError(
         "The server is unavailable. Use Retry connection below, then try again.",
@@ -168,7 +178,7 @@ export default function Home() {
         name={name.trim()}
         onExit={() => {
           setPlaying(false);
-          setStep(3);
+          setStep(1);
         }}
       />
     );
@@ -177,7 +187,7 @@ export default function Home() {
     <main className={`game-lobby ${panelOpen ? "setup-open" : ""}`}>
       <Image
         className="lobby-art"
-        src="/img/crossline-hero.png"
+        src="/img/crossline-title-v2.png"
         alt=""
         fill
         priority
@@ -201,17 +211,10 @@ export default function Home() {
         <nav aria-label="Game menu">
           <button
             className="lobby-nav"
-            aria-current={!guide ? "page" : undefined}
-            onClick={openSetup}
-          >
-            Play
-          </button>
-          <button
-            className="lobby-nav"
             aria-current={guide ? "page" : undefined}
             onClick={() => setGuide(true)}
           >
-            Field guide
+            Controls
           </button>
         </nav>
       </header>
@@ -220,18 +223,38 @@ export default function Home() {
           <p className="lobby-kicker">A city in the balance</p>
           <h1 id="game-title">CROSSLINE</h1>
           <span className="lobby-subtitle">CROWD COMMAND</span>
-          <p className="lobby-description">
-            The street is alive.
-            <br />
-            Pick a side. Find your people.
-            <br />
-            Decide where you draw the line.
-          </p>
+          <p className="lobby-description">Hold the line. Break the silence.</p>
           {!panelOpen && (
             <div className="lobby-actions">
-              <button className="lobby-primary" onClick={openSetup}>
-                Start playing <span aria-hidden="true">→</span>
+              <button
+                className="lobby-primary"
+                disabled={serverMode !== "lan"}
+                onClick={openSetup}
+              >
+                Local network <span aria-hidden="true">→</span>
               </button>
+              <small className="mode-help">
+                {serverMode === "lan"
+                  ? "Same Wi-Fi · This host stays running"
+                  : "Open your local host’s address for Wi-Fi play"}
+              </small>
+              <button
+                className="lobby-secondary"
+                disabled={
+                  !serverMode || (serverMode !== "online" && !onlineUrl)
+                }
+                onClick={() => {
+                  if (serverMode === "online") openSetup();
+                  else if (onlineUrl) window.location.assign(onlineUrl);
+                }}
+              >
+                Online <span aria-hidden="true">↗</span>
+              </button>
+              <small className="mode-help">
+                {serverMode === "online" || onlineUrl
+                  ? "Public server · Players from anywhere"
+                  : "Public server not configured"}
+              </small>
               <button className="lobby-nav" onClick={() => setGuide(true)}>
                 How to play
               </button>
@@ -346,7 +369,7 @@ export default function Home() {
                   </p>
                 </>
               )}
-              {step === 1 && (
+              {step === 0 && (
                 <fieldset>
                   <legend>City</legend>
                   <div className="setup-options">
@@ -375,7 +398,7 @@ export default function Home() {
                   <p className="setup-note">{city.description}</p>
                 </fieldset>
               )}
-              {step === 2 && (
+              {step === 1 && (
                 <fieldset>
                   <legend>Entry area</legend>
                   <div className="setup-options">
@@ -389,15 +412,19 @@ export default function Home() {
                           onChange={() => setAreaId(item.id)}
                         />
                         <span>
-                          <strong>{item.name}</strong>
-                          <small>{item.description}</small>
+                          <strong>{placeName(item.name)}</strong>
+                          <small>
+                            {item.id === "gathering"
+                              ? "Near the gathering"
+                              : "Enter from the outer streets"}
+                          </small>
                         </span>
                       </label>
                     ))}
                   </div>
                 </fieldset>
               )}
-              {step === 3 && (
+              {step === 1 && (
                 <>
                   <fieldset>
                     <legend>Role</legend>
@@ -437,14 +464,14 @@ export default function Home() {
                     {name}
                   </button>
                   <span>/</span>
-                  <button type="button" onClick={() => setStep(1)}>
+                  <button type="button" onClick={() => setStep(0)}>
                     {city.name}
                   </button>
-                  {step >= 3 && (
+                  {step >= 1 && (
                     <>
                       <span>/</span>
-                      <button type="button" onClick={() => setStep(2)}>
-                        {selectedArea.name}
+                      <button type="button" onClick={() => setStep(1)}>
+                        {placeName(selectedArea.name)}
                       </button>
                     </>
                   )}
@@ -466,15 +493,17 @@ export default function Home() {
                 Back
               </button>
               <button className="lobby-primary" type="submit">
-                {step === 3 ? "Enter the city" : "Continue"}{" "}
+                {step === 1 ? "Enter the city" : "Choose role"}{" "}
                 <span aria-hidden="true">→</span>
               </button>
             </div>
           </form>
         ) : (
           <div className="lobby-scene-caption">
-            <strong>Every street has two sides.</strong>
-            <span>New Delhi / Paris</span>
+            <strong>One city. Every choice matters.</strong>
+            <span>
+              {CITY_NAMES.delhi} / {CITY_NAMES.paris}
+            </span>
           </div>
         )}
       </div>

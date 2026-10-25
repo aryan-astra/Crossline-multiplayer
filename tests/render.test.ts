@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createWorld } from "../src/game/engine";
 import { drawFrame, drawMinimap } from "../src/game/render";
 import { initializeWorldRules } from "../src/game/world-rules";
+import { placeName } from "../src/game/place-names";
 
 function recordingContext(labels: string[]): CanvasRenderingContext2D {
   return new Proxy(
@@ -94,8 +95,10 @@ test("roofs occlude characters behind the facade and culling skips distant actor
   w.selectedId = 2;
   const labels: string[] = [];
   drawFrame(recordingContext(labels), w, 400, 400, {} as HTMLCanvasElement);
-  assert.ok(labels.indexOf("▼ Behind") < labels.indexOf("TEST BLOCK"));
-  assert.ok(labels.indexOf("TEST BLOCK") < labels.indexOf("Front"));
+  assert.ok(
+    labels.indexOf("▼ Behind") < labels.indexOf(placeName("TEST BLOCK")),
+  );
+  assert.ok(labels.indexOf(placeName("TEST BLOCK")) < labels.indexOf("Front"));
   assert.ok(!labels.includes("▼ Distant"));
 });
 
@@ -238,4 +241,37 @@ test("minimap viewport uses the actual game canvas dimensions", () => {
   assert.equal(viewport.length, expected.length);
   for (const [index, value] of expected.entries())
     assert.ok(Math.abs(viewport[index] - value) < 1e-10);
+});
+
+test("minimap reuses static geometry across authoritative snapshots", (t) => {
+  const w = createWorld("paris", "watcher", "Test", "test", 0, 0);
+  let backgrounds = 0;
+  const ctx = recordingContext([]);
+  const original = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElement() {
+        backgrounds++;
+        return { width: 0, height: 0, getContext: () => ctx };
+      },
+    },
+  });
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, "document", original);
+    else Reflect.deleteProperty(globalThis, "document");
+  });
+  drawMinimap(ctx, w, 200, 136, 1280, 720);
+  drawMinimap(
+    ctx,
+    {
+      ...w,
+      map: { ...w.map, buildings: w.map.buildings.map((b) => ({ ...b })) },
+    },
+    200,
+    136,
+    1280,
+    720,
+  );
+  assert.equal(backgrounds, 1);
 });
