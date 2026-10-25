@@ -3,11 +3,22 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import GameScreen from "@/components/GameScreen";
+import dynamic from "next/dynamic";
 import { AREAS, type AreaId } from "@/game/locations";
 import type { MapId, Role } from "@/game/types";
 import type { Profile } from "@/network/protocol";
 import "./menu.css";
+
+const GameScreen = dynamic(() => import("@/components/GameScreen"), {
+  loading: () => (
+    <main className="game-lobby">
+      <section className="lobby-intro">
+        <h1>Crossline</h1>
+        <p role="status">Loading the city…</p>
+      </section>
+    </main>
+  ),
+});
 
 const cities = [
   {
