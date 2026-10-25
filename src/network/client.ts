@@ -4,8 +4,15 @@ import type {
   ServerMessage,
   Snapshot,
   WireSnapshot,
+  SnapshotDelta,
 } from "./protocol";
 import type { MapDef, MapId } from "../game/types";
+import { applySnapshotDelta } from "./delta";
+
+const snapshotBases = new WeakMap<Map<MapId, MapDef>, WireSnapshot>();
+export function clearSnapshotBase(maps: Map<MapId, MapDef>) {
+  snapshotBases.delete(maps);
+}
 
 export function readServerMessage(
   raw: string,
@@ -37,6 +44,62 @@ export function readServerMessage(
       ? (value as Extract<ServerMessage, { type: "ack" | "error" }>)
       : null;
   }
+  if (message.type === "delta") {
+    const delta = value as SnapshotDelta;
+    const base = maps ? snapshotBases.get(maps) : undefined;
+    if (
+      !maps ||
+      !base ||
+      !Number.isSafeInteger(delta.tick) ||
+      !Number.isSafeInteger(delta.ack) ||
+      !Number.isSafeInteger(delta.baseTick) ||
+      !delta.patch ||
+      !delta.world ||
+      !delta.entities ||
+      !Array.isArray(delta.entities.remove) ||
+      !delta.entities.remove.every(
+        (id) => Number.isSafeInteger(id) && id > 0,
+      ) ||
+      !Array.isArray(delta.entities.order) ||
+      !delta.entities.order.every((id) => Number.isSafeInteger(id) && id > 0) ||
+      new Set(delta.entities.order).size !== delta.entities.order.length ||
+      !Array.isArray(delta.entities.upsert) ||
+      !delta.entities.upsert.every(
+        (entity) =>
+          entity &&
+          Number.isSafeInteger(entity.id) &&
+          entity.id > 0 &&
+          entity.fields &&
+          typeof entity.fields === "object" &&
+          !Array.isArray(entity.fields) &&
+          (entity.unset === undefined ||
+            (Array.isArray(entity.unset) &&
+              entity.unset.every((key) => typeof key === "string"))),
+      ) ||
+      (delta.unset !== undefined &&
+        (!Array.isArray(delta.unset) ||
+          !delta.unset.every((key) => typeof key === "string"))) ||
+      (delta.worldUnset !== undefined &&
+        (!Array.isArray(delta.worldUnset) ||
+          !delta.worldUnset.every((key) => typeof key === "string"))) ||
+      (delta.eventsReset !== undefined &&
+        typeof delta.eventsReset !== "boolean") ||
+      !Array.isArray(delta.events) ||
+      !["delhi", "paris"].includes(delta.mapId)
+    )
+      return null;
+    const expectedIds = new Set(base.world.entities.map(({ id }) => id));
+    for (const id of delta.entities.remove) expectedIds.delete(id);
+    for (const { id } of delta.entities.upsert) expectedIds.add(id);
+    if (
+      expectedIds.size !== delta.entities.order.length ||
+      delta.entities.order.some((id) => !expectedIds.has(id))
+    )
+      return null;
+    const wire = applySnapshotDelta(base, delta);
+    if (!wire) return null;
+    return decodeWireSnapshot(wire, maps, snapshotBases);
+  }
   if (
     message.type !== "snapshot" ||
     !Number.isSafeInteger(message.tick) ||
@@ -46,28 +109,8 @@ export function readServerMessage(
   let snapshot: Snapshot;
   if ("mapId" in message && Array.isArray(message.buildingStates)) {
     const wire = value as WireSnapshot;
-    const map = maps?.get(wire.mapId);
-    if (
-      !map ||
-      wire.buildingStates.length !== map.buildings.length ||
-      !wire.buildingStates.every(
-        (s) =>
-          Array.isArray(s) &&
-          typeof s[0] === "number" &&
-          Number.isFinite(s[0]) &&
-          typeof s[1] === "boolean",
-      )
-    )
-      return null;
-    const fullMap = {
-      ...map,
-      buildings: map.buildings.map((b, i) => ({
-        ...b,
-        hp: wire.buildingStates[i][0],
-        broken: wire.buildingStates[i][1] ? true : undefined,
-      })),
-    };
-    snapshot = { ...wire, world: { ...wire.world, map: fullMap } } as Snapshot;
+    if (!maps) return null;
+    return decodeWireSnapshot(wire, maps, snapshotBases);
   } else snapshot = value as Snapshot;
   if (
     !snapshot.world?.map ||
@@ -82,6 +125,41 @@ export function readServerMessage(
   )
     return null;
   return snapshot;
+}
+
+function decodeWireSnapshot(
+  wire: WireSnapshot,
+  maps: Map<MapId, MapDef>,
+  bases: WeakMap<Map<MapId, MapDef>, WireSnapshot>,
+): Snapshot | null {
+  const map = maps.get(wire.mapId);
+  if (
+    !map ||
+    !Array.isArray(wire.world?.entities) ||
+    !wire.self ||
+    !Array.isArray(wire.predictions) ||
+    !Array.isArray(wire.rankings) ||
+    !Array.isArray(wire.buildingStates) ||
+    wire.buildingStates.length !== map.buildings.length ||
+    !wire.buildingStates.every(
+      (s) =>
+        Array.isArray(s) &&
+        typeof s[0] === "number" &&
+        Number.isFinite(s[0]) &&
+        typeof s[1] === "boolean",
+    )
+  )
+    return null;
+  const fullMap = {
+    ...map,
+    buildings: map.buildings.map((b, i) => ({
+      ...b,
+      hp: wire.buildingStates[i][0],
+      broken: wire.buildingStates[i][1] ? true : undefined,
+    })),
+  };
+  bases.set(maps, wire);
+  return { ...wire, world: { ...wire.world, map: fullMap } } as Snapshot;
 }
 
 export function isStaleSnapshot(
@@ -106,6 +184,10 @@ export function connectWorld(options: {
     attempt = 0,
     seq = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let inputTimer: ReturnType<typeof setTimeout> | undefined;
+  let queuedInput: Extract<Command, { type: "input" }> | undefined;
+  let lastInputKey = "";
+  let lastInputAt = 0;
   const maps = new Map<MapId, MapDef>();
   const pending = new Map<string, { command: Command; mapId: MapId }>();
   const abort = new AbortController();
@@ -126,7 +208,7 @@ export function connectWorld(options: {
     );
     return true;
   };
-  const send = (command: Command) => {
+  const sendActual = (command: Command) => {
     const financial = ["trade", "bet", "fund"].includes(command.type);
     if (financial && pending.size >= 16) return false;
     const requestId =
@@ -141,6 +223,41 @@ export function connectWorld(options: {
       options.onNotice(
         "Submitting transaction… Waiting for the server receipt.",
       );
+    }
+    return sent;
+  };
+  const send = (command: Command) => {
+    if (command.type !== "input") return sendActual(command);
+    const now = Date.now();
+    const key = JSON.stringify(command.input);
+    if (key === lastInputKey && now - lastInputAt < 250) {
+      if (queuedInput) {
+        queuedInput = undefined;
+        clearTimeout(inputTimer);
+        inputTimer = undefined;
+      }
+      return true;
+    }
+    const wait = Math.max(0, 50 - (now - lastInputAt));
+    if (lastInputAt && wait > 0) {
+      queuedInput = command;
+      if (!inputTimer) {
+        inputTimer = setTimeout(() => {
+          inputTimer = undefined;
+          const latest = queuedInput;
+          queuedInput = undefined;
+          if (latest && !stopped && sendActual(latest)) {
+            lastInputKey = JSON.stringify(latest.input);
+            lastInputAt = Date.now();
+          }
+        }, wait);
+      }
+      return true;
+    }
+    const sent = sendActual(command);
+    if (sent) {
+      lastInputKey = key;
+      lastInputAt = now;
     }
     return sent;
   };
@@ -175,6 +292,12 @@ export function connectWorld(options: {
       url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const active = new WebSocket(url);
       maps.clear();
+      clearSnapshotBase(maps);
+      clearTimeout(inputTimer);
+      inputTimer = undefined;
+      queuedInput = undefined;
+      lastInputKey = "";
+      lastInputAt = 0;
       socket = active;
       active.onopen = () => {
         if (stopped) {
@@ -207,6 +330,17 @@ export function connectWorld(options: {
           return;
         const message = readServerMessage(event.data, maps);
         if (!message) {
+          try {
+            if (
+              (JSON.parse(event.data) as { type?: string }).type === "delta"
+            ) {
+              options.onNotice("Snapshot stream lost sync; reconnecting.");
+              active.close(1012, "Snapshot resync required");
+              return;
+            }
+          } catch {
+            // The unsupported-message notice below handles malformed JSON.
+          }
           options.onNotice("Server sent an unsupported message.");
           return;
         }
@@ -266,6 +400,11 @@ export function connectWorld(options: {
       stopped = true;
       abort.abort();
       clearTimeout(retry);
+      clearTimeout(inputTimer);
+      inputTimer = undefined;
+      queuedInput = undefined;
+      lastInputKey = "";
+      lastInputAt = 0;
       pending.clear();
       if (socket) {
         socket.onclose = null;

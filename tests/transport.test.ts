@@ -148,7 +148,7 @@ test("live snapshots skip compression and coalesce while a write is unfinished",
     const config = typeof options === "function" ? {} : (options ?? {});
     const done = typeof options === "function" ? options : callback;
     const type = typeof data === "string" ? JSON.parse(data).type : undefined;
-    if (["snapshot", "map", "ack"].includes(type))
+    if (["snapshot", "delta", "map", "ack"].includes(type))
       frames.push({ type, compress: config.compress });
     if (type === "snapshot") {
       return original.call(this, data, config, (error) => {
@@ -163,20 +163,22 @@ test("live snapshots skip compression and coalesce while a write is unfinished",
     const connection = await game.connect(guest.cookie);
     assert.equal(connection.ws.extensions, "");
     await connection.wait((m) => m.type === "snapshot");
-    const count = frames.filter((f) => f.type === "snapshot").length;
+    const sentCount = () =>
+      frames.filter((f) => ["snapshot", "delta"].includes(f.type)).length;
+    const count = sentCount();
     connection.send({ v: 1, seq: 1, requestId: "ping-busy", type: "ping" });
     await connection.wait((m) => m.type === "ack" && m.seq === 1);
     await delay(250);
-    assert.equal(frames.filter((f) => f.type === "snapshot").length, count);
+    assert.equal(sentCount(), count);
     assert.ok(
       frames
-        .filter((f) => f.type === "snapshot")
+        .filter((f) => ["snapshot", "delta"].includes(f.type))
         .every((f) => f.compress === false),
     );
     assert.ok(frames.some((f) => f.type === "map" && f.compress === false));
     release?.();
     await delay(150);
-    assert.ok(frames.filter((f) => f.type === "snapshot").length > count);
+    assert.ok(sentCount() > count);
   } finally {
     WebSocket.prototype.send = original;
     await game.close();
@@ -246,7 +248,7 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
     );
     const compact = first.rawFrames.find((raw) => {
       const frame = JSON.parse(raw);
-      return frame.type === "snapshot" && frame.tick === tick;
+      return ["snapshot", "delta"].includes(frame.type) && frame.tick === tick;
     })!;
     assert.ok(
       compact.length < baseline.length * 0.7,

@@ -8,7 +8,12 @@ import { performance } from "node:perf_hooks";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import { STEP } from "../game/loop";
-import { parseMessage, type ServerMessage } from "../network/protocol";
+import {
+  parseMessage,
+  type ServerMessage,
+  type WireSnapshot,
+} from "../network/protocol";
+import { compactSnapshot, makeSnapshotDelta } from "../network/delta";
 import { GameService } from "./service";
 import type { Store } from "./store";
 import type { MapId } from "../game/types";
@@ -27,6 +32,7 @@ type Connection = {
   invalid: number;
   mapId?: MapId;
   snapshotPending?: boolean;
+  lastSnapshot?: WireSnapshot;
 };
 
 function token(request: IncomingMessage): string {
@@ -205,13 +211,15 @@ export function createGameServer({
       return false;
     }
     connection.blockedAt = 0;
-    if (message.type === "snapshot") connection.snapshotPending = true;
+    const snapshotUpdate =
+      message.type === "snapshot" || message.type === "delta";
+    if (snapshotUpdate) connection.snapshotPending = true;
     // shortcut: use uncompressed frames until payload reduction and browser input latency are measured together.
     connection.socket.send(
       JSON.stringify(message),
       { compress: false },
       (error) => {
-        if (message.type === "snapshot") connection.snapshotPending = false;
+        if (snapshotUpdate) connection.snapshotPending = false;
         if (error) connection.socket.terminate();
       },
     );
@@ -226,17 +234,13 @@ export function createGameServer({
         if (!send(connection, { v: 1, type: "map", map: full.world.map }))
           return;
         connection.mapId = full.world.map.id;
+        connection.lastSnapshot = undefined;
       }
-      const { map, ...world } = full.world;
-      const compact = {
-        ...full,
-        world,
-        mapId: map.id,
-        buildingStates: map.buildings.map(
-          (building) => [building.hp, !!building.broken] as [number, boolean],
-        ),
-      };
-      send(connection, compact);
+      const compact = compactSnapshot(full);
+      const message = connection.lastSnapshot
+        ? makeSnapshotDelta(connection.lastSnapshot, compact)
+        : compact;
+      if (send(connection, message)) connection.lastSnapshot = compact;
     } catch (error) {
       console.error("Snapshot failed", error);
       connection.socket.close(1011, "Snapshot unavailable");

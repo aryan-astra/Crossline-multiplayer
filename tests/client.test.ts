@@ -50,6 +50,50 @@ test("wire snapshots require cached geometry and matching authoritative building
   assert.equal(decoded?.type, "snapshot");
   if (decoded?.type === "snapshot")
     assert.equal(decoded.world.map.buildings[0].broken, undefined);
+  const delta = {
+    v: 1,
+    type: "delta",
+    tick: 2,
+    ack: 1,
+    baseTick: 1,
+    mapId: "delhi",
+    patch: {},
+    world: { tick: 2, eventSeq: 1 },
+    entities: {
+      remove: [],
+      upsert: [],
+      order:
+        decoded?.type === "snapshot"
+          ? decoded.world.entities.map(({ id }) => id)
+          : [],
+    },
+    events: [{ id: 1, tick: 2, time: 1, type: "news" }],
+  };
+  const advanced = readServerMessage(JSON.stringify(delta), maps);
+  assert.equal(advanced?.type, "snapshot");
+  if (advanced?.type === "snapshot") {
+    assert.equal(advanced.tick, 2);
+    assert.equal(advanced.world.eventSeq, 1);
+    assert.equal(advanced.world.events[0].id, 1);
+  }
+  assert.equal(
+    readServerMessage(JSON.stringify({ ...delta, baseTick: 0 }), maps),
+    null,
+  );
+  assert.equal(
+    readServerMessage(
+      JSON.stringify({
+        ...delta,
+        entities: { ...delta.entities, order: [1, 1] },
+      }),
+      maps,
+    ),
+    null,
+  );
+  assert.equal(
+    readServerMessage(JSON.stringify({ ...delta, unset: [1] }), maps),
+    null,
+  );
   snapshot.buildingStates = [["damaged", false]];
   assert.equal(readServerMessage(JSON.stringify(snapshot), maps), null);
 });
@@ -149,6 +193,31 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
   sockets[1].readyState = 1;
   sockets[1].onopen!();
   assert.equal(JSON.parse(sockets[1].sent[0]).seq, 1);
+  const input = {
+    type: "input" as const,
+    input: {
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      sprint: false,
+      mouseX: 10,
+      mouseY: 20,
+    },
+  };
+  assert.equal(connection.send(input), true);
+  assert.equal(connection.send(input), true);
+  assert.equal(sockets[1].sent.length, 2);
+  assert.equal(
+    connection.send({ ...input, input: { ...input.input, right: true } }),
+    true,
+  );
+  t.mock.timers.tick(50);
+  assert.equal(sockets[1].sent.length, 3);
+  assert.deepEqual(
+    sockets[1].sent.map((raw) => JSON.parse(raw).seq),
+    [1, 2, 3],
+  );
   connection.close();
   t.mock.timers.tick(30_000);
   assert.equal(sockets.length, 2);
