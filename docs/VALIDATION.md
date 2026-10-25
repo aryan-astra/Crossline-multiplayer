@@ -1,5 +1,17 @@
 # Executed validation
 
+## 25 October 2026 — field HUD and spectator exchange
+
+`npm run validate` passed formatting, lint, TypeScript, **91 tests (zero failures or skips)** and the production build. Added checks cover quote presentation and fees, invalid LAN ports, ignoring snapshots before the acknowledged join, yielding between overloaded simulation steps, and preventing an automatic repeat throw during an existing violent episode. Under overload the shared clock now slows instead of running consecutive catch-up steps ahead of network I/O.
+
+The production version was checked in the in-app browser. Callsign → Paris → Republic square → Spectator entered Paris directly. Selling the existing single ORDR unit produced a server acceptance receipt, cleared the holding and changed credits46→66. Funding a crowd delivery debited20 credits and showed an en-route truck with its authoritative ID and changing world position. Prediction buttons explained missing selected protesters and unavailable objective phases. No prediction was purchased in this browser pass; settlement remains covered by service tests.
+
+At an emulated390×844 viewport, document dimensions matched the viewport with no page overflow. Quotes and order buttons were readable; exchange content scrolls internally. This check found redundant movement controls consuming exchange space and an ineffective spectator Run button; those were removed from that context. Camera arrows remain available when the exchange closes. This is viewport emulation, not physical-device certification.
+
+The LAN launcher ran on the local private interface and its printed URL answered `/api/health` successfully. No router or firewall settings changed, and no second physical device was tested.
+
+The OSM-map endurance run passed1800 simulated seconds /36000 steps across two authoritative worlds with in-memory SQLite and a controller restart. Tick cost: p50 **13.219ms**, p95 **29.421ms**, maximum **274.4ms**. Entity counts stayed51–55; post-GC heap8.86→9.32MB, RSS growth97,177,600bytes. Full JSON snapshot samples were144–153KB before wire compression/static-map omission. Measurements exclude rendering and network delivery, establish no supported concurrency, and do not prove balanced win rates. CPU spikes, entity bandwidth, day-long economics and public account recovery remain outstanding.
+
 ## 24 October 2026 — Crossline lobby and live-server repair
 
 The title screen is now a single fixed viewport with retained cinematic artwork, a shared vector Crossline mark/favicon, and in-place callsign → city → entry area → role setup. Browser checks at 1366×768 and 390×844 confirmed viewport/document dimensions match. At 390×844 the entire role step fit without internal scrolling; Back and Enter stayed visible. Blank names showed an inline error and focused the input. Paris selection, area selection, entering the authoritative game, leaving back to setup, and a chant updating score to 1 were exercised. The browser reported no warnings/errors. Short landscape review found an intro/footer overlap; the rebuilt 844×390 title screen now ends its intro at 281.9 px, above the footer at 338.4 px, with document dimensions matching the viewport.
