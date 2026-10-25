@@ -832,23 +832,6 @@ function updateProtester(w: World, e: Entity, dt: number) {
       return;
     }
   }
-  if (e.violentT > 0 && e.cooldown <= 0) {
-    const cop = nearest(
-      w,
-      e,
-      (o) => o.kind === "police" || o.kind === "military",
-      280,
-    );
-    if (cop) {
-      throwStone(
-        w,
-        e,
-        cop.x + (random(w) - 0.5) * 40,
-        cop.y + (random(w) - 0.5) * 40,
-      );
-      return;
-    }
-  }
   // chant near rally
   const rally = w.map.rallyPoints[e.rallyIdx % w.map.rallyPoints.length];
   if (dist(e, rally) < 90 && random(w) < b.chattiness * 0.25 && e.chantT <= 0) {
