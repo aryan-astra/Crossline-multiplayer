@@ -124,6 +124,23 @@ export function nextWaypoint(
     Object.assign(e, collideBuildings(map, e.x, e.y, 9));
     e.path = undefined;
   }
+  if (
+    e.path?.length &&
+    e.pathTarget &&
+    Math.hypot(e.pathTarget.x - x, e.pathTarget.y - y) <= CELL / 2
+  ) {
+    while (
+      e.path.length > 1 &&
+      Math.hypot(e.path[0].x - e.x, e.path[0].y - e.y) < 6
+    )
+      e.path.shift();
+    if (Math.hypot(e.path[0].x - e.x, e.path[0].y - e.y) >= 6) {
+      if (clear(map, e, e.path[0])) return e.path[0];
+      e.path = undefined;
+    } else {
+      e.path = undefined;
+    }
+  }
   const target = collideBuildings(map, x, y, 9);
   if (clear(map, e, target)) {
     e.path = undefined;
