@@ -31,6 +31,7 @@ type Connection = {
   blockedAt: number;
   invalid: number;
   mapId?: MapId;
+  supportsDeltas?: boolean;
   snapshotPending?: boolean;
   lastSnapshot?: WireSnapshot;
 };
@@ -237,9 +238,10 @@ export function createGameServer({
         connection.lastSnapshot = undefined;
       }
       const compact = compactSnapshot(full);
-      const message = connection.lastSnapshot
-        ? makeSnapshotDelta(connection.lastSnapshot, compact)
-        : compact;
+      const message =
+        connection.supportsDeltas && connection.lastSnapshot
+          ? makeSnapshotDelta(connection.lastSnapshot, compact)
+          : compact;
       if (send(connection, message)) connection.lastSnapshot = compact;
     } catch (error) {
       console.error("Snapshot failed", error);
@@ -349,6 +351,8 @@ export function createGameServer({
           });
         try {
           service.command(profile.id, message);
+          if (message.type === "join")
+            connection.supportsDeltas = message.supportsDeltas === true;
           send(connection, {
             v: 1,
             type: "ack",

@@ -308,7 +308,7 @@ export function connectWorld(options: {
         attempt = 0;
         options.onStatus("Connected");
         const join = options.join();
-        send(join);
+        send({ ...join, supportsDeltas: true });
         if (pending.size)
           options.onNotice(
             "Retrying unconfirmed transactions… Waiting for the server receipt.",

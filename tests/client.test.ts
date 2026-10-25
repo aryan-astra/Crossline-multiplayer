@@ -182,7 +182,15 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
     sockets[0].sent.map((raw) => JSON.parse(raw).seq),
     [1, 2],
   );
-  assert.equal(JSON.parse(sockets[0].sent[0]).type, "join");
+  assert.deepEqual(JSON.parse(sockets[0].sent[0]), {
+    v: 1,
+    seq: 1,
+    requestId: JSON.parse(sockets[0].sent[0]).requestId,
+    type: "join",
+    mapId: "delhi",
+    role: "watcher",
+    supportsDeltas: true,
+  });
   sockets[0].bufferedAmount = 70_000;
   assert.equal(connection.send({ type: "ping" }), false);
   sockets[0].close();

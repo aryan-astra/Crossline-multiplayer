@@ -197,6 +197,7 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
       seq: 1,
       requestId: "join-actor",
       type: "join",
+      supportsDeltas: true,
       mapId: "delhi",
       role: "protester",
     });
@@ -205,6 +206,7 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
       seq: 1,
       requestId: "join-observer",
       type: "join",
+      supportsDeltas: true,
       mapId: "delhi",
       role: "watcher",
     });
@@ -254,6 +256,7 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
       compact.length < baseline.length * 0.7,
       `${compact.length} < ${baseline.length} * 0.7`,
     );
+    assert.equal(JSON.parse(compact).type, "delta");
     assert.equal(first.ws.extensions, "");
     assert.deepEqual(
       JSON.parse(JSON.stringify(a.world.map)),
@@ -300,6 +303,32 @@ test("two authenticated WebSocket sessions share server movement, bot state and 
       r.json(),
     )) as { ok: boolean; online: number };
     assert.deepEqual(health, { ok: true, online: 2 });
+  } finally {
+    await game.close();
+  }
+});
+
+test("legacy joins continue receiving full snapshots", async () => {
+  const game = await setup();
+  try {
+    const legacy = await game.guest("Legacy client");
+    const socket = await game.connect(legacy.cookie);
+    socket.send({
+      v: 1,
+      seq: 1,
+      requestId: "legacy-join",
+      type: "join",
+      mapId: "delhi",
+      role: "watcher",
+    });
+    await socket.wait((m) => m.type === "ack" && m.seq === 1);
+    await delay(250);
+    const frames = socket.rawFrames.map((raw) => JSON.parse(raw));
+    assert.ok(frames.filter((frame) => frame.type === "snapshot").length >= 2);
+    assert.equal(
+      frames.some((frame) => frame.type === "delta"),
+      false,
+    );
   } finally {
     await game.close();
   }

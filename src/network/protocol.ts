@@ -3,7 +3,13 @@ import type { AreaId } from "../game/locations";
 
 export const PROTOCOL_VERSION = 1;
 export type Command =
-  | { type: "join"; mapId: MapId; role: Role; areaId?: AreaId }
+  | {
+      type: "join";
+      mapId: MapId;
+      role: Role;
+      areaId?: AreaId;
+      supportsDeltas?: boolean;
+    }
   | { type: "input"; input: InputState }
   | {
       type: "action";
@@ -168,7 +174,9 @@ export function parseMessage(value: unknown): ClientMessage | null {
         role(value.role) &&
         (value.areaId === undefined ||
           value.areaId === "gathering" ||
-          value.areaId === "approach");
+          value.areaId === "approach") &&
+        (value.supportsDeltas === undefined ||
+          typeof value.supportsDeltas === "boolean");
       break;
     case "observe":
       valid = map(value.mapId);
