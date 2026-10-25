@@ -1,12 +1,21 @@
-import type { Entity, MapDef } from "./types";
+import type { Building, Entity, MapDef } from "./types";
 import { collideBuildings, isWalkable, queryBuildings } from "./maps";
 
 const CELL = 40;
+const REPLAN_DISTANCE = CELL * 2;
 type Point = { x: number; y: number };
 const grids = new WeakMap<
   MapDef,
-  { cols: number; rows: number; open: Uint8Array; edges: number[][] }
+  {
+    cols: number;
+    rows: number;
+    open: Uint8Array;
+    edges: number[][];
+    buildingCount: number;
+    barricades: { building: Building; broken?: boolean }[];
+  }
 >();
+const entityGrids = new WeakMap<Entity, object>();
 
 const distance2 = (a: Point, b: Point) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
@@ -67,6 +76,7 @@ function clear(
     Math.max(a.x, b.x) + 9,
     Math.max(a.y, b.y) + 9,
   )) {
+    if (block.barricade && block.broken) continue;
     if (
       Math.max(a.x, b.x) < block.x - 9 ||
       Math.min(a.x, b.x) > block.x + block.w + 9 ||
@@ -92,7 +102,16 @@ function clear(
 
 /** Build the static walk graph before the first simulation tick. */
 export function prewarmNavigation(map: MapDef): void {
-  if (grids.has(map)) return;
+  const cached = grids.get(map);
+  if (
+    cached &&
+    cached.barricades.every(
+      (state) => state.broken === state.building.broken,
+    ) &&
+    cached.buildingCount === map.buildings.length
+  )
+    return;
+  const barricades = map.buildings.filter((building) => building.barricade);
   const cols = Math.ceil(map.w / CELL),
     rows = Math.ceil(map.h / CELL);
   const open = new Uint8Array(cols * rows);
@@ -117,7 +136,17 @@ export function prewarmNavigation(map: MapDef): void {
         edges[j].push(i);
       }
   }
-  grids.set(map, { cols, rows, open, edges });
+  grids.set(map, {
+    cols,
+    rows,
+    open,
+    edges,
+    buildingCount: map.buildings.length,
+    barricades: barricades.map((building) => ({
+      building,
+      broken: building.broken,
+    })),
+  });
 }
 
 export function nextWaypoint(
@@ -126,15 +155,27 @@ export function nextWaypoint(
   x: number,
   y: number,
 ): { x: number; y: number } {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: e.x, y: e.y };
   if (!isWalkable(map, e.x, e.y, 9)) {
     Object.assign(e, collideBuildings(map, e.x, e.y, 9));
     e.path = undefined;
   }
-  if (
-    e.path?.length &&
-    e.pathTarget &&
-    Math.hypot(e.pathTarget.x - x, e.pathTarget.y - y) <= CELL / 2
-  ) {
+  if (e.pathTarget) {
+    prewarmNavigation(map);
+    if (entityGrids.get(e) !== grids.get(map)) {
+      e.path = undefined;
+      e.pathTarget = undefined;
+    }
+  }
+  const target = collideBuildings(map, x, y, 9);
+  if (clear(map, e, target)) {
+    e.path = undefined;
+    return target;
+  }
+  const targetMoved =
+    !e.pathTarget ||
+    Math.hypot(e.pathTarget.x - x, e.pathTarget.y - y) > REPLAN_DISTANCE;
+  if (e.path?.length && e.pathTarget && !targetMoved) {
     while (
       e.path.length > 1 &&
       Math.hypot(e.path[0].x - e.x, e.path[0].y - e.y) < 6
@@ -144,19 +185,11 @@ export function nextWaypoint(
       if (clear(map, e, e.path[0])) return e.path[0];
       e.path = undefined;
     } else {
-      e.path = undefined;
+      e.path = [];
     }
   }
-  const target = collideBuildings(map, x, y, 9);
-  if (clear(map, e, target)) {
-    e.path = undefined;
-    return target;
-  }
-  if (
-    !e.path ||
-    !e.pathTarget ||
-    Math.hypot(e.pathTarget.x - x, e.pathTarget.y - y) > CELL / 2
-  ) {
+  if (e.path === undefined || targetMoved) {
+    // An empty path marks an unreachable target until it moves far enough to retry.
     prewarmNavigation(map);
     const grid = grids.get(map)!;
     const { cols, open, edges } = grid;
@@ -242,13 +275,15 @@ export function nextWaypoint(
     e.path = path.reverse();
     if (clear(map, center(end), target)) e.path.push(target);
     e.pathTarget = { x, y };
+    entityGrids.set(e, grid);
   }
+  if (!e.path?.length) return { x: e.x, y: e.y };
   while (
     e.path.length > 1 &&
     Math.hypot(e.path[0].x - e.x, e.path[0].y - e.y) < 6
   )
     e.path.shift();
-  return e.path[0] ?? target;
+  return e.path[0] ?? { x: e.x, y: e.y };
 }
 
 export const hasLineOfSight = clear;

@@ -63,6 +63,7 @@ export function initializeWorldRules(w: World) {
     defenseSeconds: 180,
     recoverySeconds: 60,
   };
+  w.objective.contributors ??= {};
   for (const [index, shop] of w.map.buildings
     .filter((b) => b.kind !== "wall" && b.kind !== "monument")
     .entries()) {
@@ -82,6 +83,8 @@ export function initializeWorldRules(w: World) {
         { x: 150, y: 30, w: 60, h: 28 },
       ],
     };
+    if (shop.kind === "shop")
+      shop.shopStock ??= { food: 3, water: 3, nextRefill: w.time + 90 };
   }
   w.resources ??= ["protester", "police"].map((key) => {
     const point = w.map.depots[key as "protester" | "police"];
@@ -207,12 +210,53 @@ export function collectResource(w: World, entity: Entity): boolean {
   return used;
 }
 
+export function lootShop(w: World, entity: Entity): boolean {
+  if (
+    !w.entities.includes(entity) ||
+    !active(entity) ||
+    !entity.profileId ||
+    (entity.shopLootUntil ?? 0) > w.time
+  )
+    return false;
+  const shop = w.map.buildings.find(
+    (building) =>
+      building.kind === "shop" &&
+      (entity.buildingId === building.id ||
+        (!entity.buildingId &&
+          building.entrance &&
+          distance(entity, building.entrance) <= 36)),
+  );
+  if (!shop?.shopStock) return false;
+  let used = false;
+  if (shop.shopStock.food > 0 && entity.hunger < 85) {
+    shop.shopStock.food--;
+    entity.hunger = Math.min(100, entity.hunger + 40);
+    used = true;
+  }
+  if (shop.shopStock.water > 0 && entity.thirst < 85) {
+    shop.shopStock.water--;
+    entity.thirst = Math.min(100, entity.thirst + 40);
+    used = true;
+  }
+  if (used) {
+    entity.shopLootUntil = w.time + 30;
+    markWanted(w, entity);
+    emitEvent(w, "resource_collection", {
+      actorId: entity.id,
+      details: `shop-looting:${shop.id}`,
+    });
+  }
+  return used;
+}
+
 export function interactObjective(w: World, entity: Entity): boolean {
   if (
     !w.objective ||
     !w.entities.includes(entity) ||
     !active(entity) ||
     entity.kind !== "protester" ||
+    !entity.isPlayer ||
+    !entity.profileId ||
     entity.buildingId ||
     distance(entity, w.objective) > 65 ||
     w.objective.status === "recovering"
@@ -229,7 +273,12 @@ function finishObjective(w: World, faction: "protester" | "police") {
   const participants = Object.entries(objective.contributors)
     .filter(([id]) =>
       w.entities.some(
-        (e) => e.id === Number(id) && active(e) && e.faction === faction,
+        (e) =>
+          e.id === Number(id) &&
+          active(e) &&
+          e.faction === faction &&
+          e.isPlayer &&
+          e.profileId,
       ),
     )
     .sort((a, b) => b[1] - a[1] || Number(a[0]) - Number(b[0]));
@@ -275,6 +324,12 @@ export function updateWorldRules(w: World, dt: number) {
       resource.food = Math.min(6, resource.food + 3);
       resource.water = Math.min(6, resource.water + 3);
       resource.nextRefill = w.time + 60;
+    }
+  for (const shop of w.map.buildings)
+    if (shop.shopStock && w.time >= shop.shopStock.nextRefill) {
+      shop.shopStock.food = Math.min(3, shop.shopStock.food + 1);
+      shop.shopStock.water = Math.min(3, shop.shopStock.water + 1);
+      shop.shopStock.nextRefill = w.time + 90;
     }
   for (const e of w.entities) {
     if (!active(e) || e.kind === "truck" || e.kind === "crate") continue;
@@ -328,26 +383,17 @@ export function updateWorldRules(w: World, dt: number) {
   const humanAttackers = nearby.filter(
     (e) =>
       e.kind === "protester" &&
+      e.isPlayer &&
       Boolean(e.profileId) &&
       (e.objectiveUntil ?? 0) > w.time,
   );
-  const attackers = humanAttackers.length
-    ? nearby.filter(
-        (e) =>
-          e.kind === "protester" &&
-          (!e.profileId || humanAttackers.some((human) => human.id === e.id)),
-      )
-    : [];
+  const attackers = humanAttackers;
   const defenders = nearby.filter(
     (e) => e.kind === "police" || e.kind === "military",
   );
   objective.status =
     attackers.length && defenders.length ? "contested" : "protected";
-  if (
-    humanAttackers.length > 0 &&
-    attackers.length >= 2 &&
-    defenders.length === 0
-  ) {
+  if (humanAttackers.length > 0 && defenders.length === 0) {
     objective.progress += dt;
     for (const e of attackers)
       objective.contributors[e.id] = (objective.contributors[e.id] ?? 0) + dt;

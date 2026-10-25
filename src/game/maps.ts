@@ -246,7 +246,22 @@ function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
     }
     return collideBuildings(map, target.x, target.y, 9);
   };
-  map.objectivePoint = open(landmark);
+  map.objectivePoint = (() => {
+    for (let radius = 0; radius <= 280; radius += 12)
+      for (let n = -radius; n <= radius; n += 12)
+        for (const [dx, dy] of [
+          [n, -radius],
+          [n, radius],
+          [-radius, n],
+          [radius, n],
+        ]) {
+          const p = open({ x: landmark.x + dx, y: landmark.y + dy });
+          if (isWalkable(map, p.x, p.y, 90)) return p;
+        }
+    return open(landmark);
+  })();
+  ensureObjectiveDefenses(map);
+  ensureStreetShops(map);
   const at = (dx: number, dy: number) =>
     open({ x: landmark.x + dx, y: landmark.y + dy });
   const cells = new Map<string, { point: Point; distance: number }>();
@@ -274,15 +289,7 @@ function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
           .every((other) => Math.hypot(p.x - other.x, p.y - other.y) > 100),
     );
   map.rallyPoints = [at(-35, 45), at(35, -35), ...districtRallies];
-  map.policeLine = [
-    at(260, -120),
-    at(280, -60),
-    at(300, 0),
-    at(300, 60),
-    at(280, 120),
-    at(260, 180),
-  ];
-  map.checkpoints = [at(-420, 0), at(420, -180), at(0, 360)];
+  map.checkpoints.push(at(-420, 0), at(420, -180), at(0, 360));
   map.spawns = {
     protester: at(-180, 0),
     police: at(220, 0),
@@ -501,6 +508,7 @@ function resolveBuildings(map: MapDef, x: number, y: number, r: number): Point {
     const startX = x,
       startY = y;
     for (const b of nearbyBuildings(map, x, y, r)) {
+      if (b.barricade && b.broken) continue;
       if (
         b.kind !== "wall" &&
         b.kind !== "block" &&
@@ -557,6 +565,7 @@ export function isWalkable(
 ): boolean {
   if (x < 10 || y < 10 || x > map.w - 10 || y > map.h - 10) return false;
   for (const b of nearbyBuildings(map, x, y, r)) {
+    if (b.barricade && b.broken) continue;
     if (!["wall", "block", "shop", "monument"].includes(b.kind)) continue;
     if (x + r < b.x || x - r > b.x + b.w || y + r < b.y || y - r > b.y + b.h)
       continue;
@@ -601,4 +610,94 @@ export function collideBuildings(
       }
   }
   return resolved;
+}
+
+export function ensureObjectiveDefenses(map: MapDef) {
+  const objective = map.objectivePoint ?? map.spawns.police;
+  for (let i = 0; i < 4; i++) {
+    const id = `${map.id}-objective-barricade-${i}`;
+    if (map.buildings.some((building) => building.id === id)) continue;
+    map.buildings.push({
+      id,
+      kind: "wall",
+      barricade: true,
+      x: objective.x - 146 + i * 76,
+      y: objective.y + 105,
+      w: 44,
+      h: 18,
+      hp: 100,
+      maxHp: 100,
+    });
+  }
+  map.policeLine = Array.from({ length: 14 }, (_, i) => {
+    const angle = ((i < 3 ? i : i - 3) * Math.PI * 2) / (i < 3 ? 3 : 11);
+    const radius = i < 3 ? 50 : 170;
+    return collideBuildings(
+      map,
+      objective.x + Math.cos(angle) * radius,
+      objective.y + Math.sin(angle) * radius,
+      9,
+    );
+  });
+  const defenseCheckpoints = [-120, 0, 120].flatMap((y) =>
+    [-220, 220].map((x) =>
+      collideBuildings(map, objective.x + x, objective.y + y, 9),
+    ),
+  );
+  map.checkpoints = [...defenseCheckpoints, ...map.checkpoints].filter(
+    (point, i, points) =>
+      points.findIndex(
+        (other) => Math.hypot(point.x - other.x, point.y - other.y) < 1,
+      ) === i,
+  );
+}
+
+export function ensureStreetShops(map: MapDef) {
+  const shops = map.buildings.filter((building) => building.kind === "shop");
+  const initialCount = shops.length;
+  const candidates = map.buildings
+    .filter(
+      (building) =>
+        building.kind === "block" &&
+        building.w <= 100 &&
+        building.h <= 100 &&
+        Math.hypot(
+          building.x + building.w / 2 - (map.objectivePoint?.x ?? 0),
+          building.y + building.h / 2 - (map.objectivePoint?.y ?? 0),
+        ) >= 180,
+    )
+    .sort(
+      (a, b) => a.w * a.h - b.w * b.h || (a.id ?? "").localeCompare(b.id ?? ""),
+    );
+  const names =
+    map.id === "delhi"
+      ? ["Kirana shop", "Chai corner", "Street provisions", "Market kiosk"]
+      : ["Boulangerie", "Café de quartier", "Épicerie", "Pâtisserie"];
+  while (shops.length < 8) {
+    let best = -1,
+      bestDistance = 180;
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      const x = candidate.x + candidate.w / 2,
+        y = candidate.y + candidate.h / 2;
+      const nearest = shops.length
+        ? Math.min(
+            ...shops.map((shop) =>
+              Math.hypot(x - shop.x - shop.w / 2, y - shop.y - shop.h / 2),
+            ),
+          )
+        : Infinity;
+      if (nearest > bestDistance) {
+        best = i;
+        bestDistance = nearest;
+      }
+    }
+    if (best < 0) break;
+    const shop = candidates.splice(best, 1)[0];
+    shop.kind = "shop";
+    shop.hp = Math.min(shop.hp, 100);
+    shop.maxHp = Math.min(shop.maxHp, 100);
+    shop.name ??= names[(shops.length - initialCount) % names.length];
+    shops.push(shop);
+  }
 }

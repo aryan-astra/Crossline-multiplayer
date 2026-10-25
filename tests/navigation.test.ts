@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createWorld } from "../src/game/engine";
 import { MAPS, collideBuildings, isWalkable } from "../src/game/maps";
+import type { Entity, MapDef } from "../src/game/types";
 import {
   hasLineOfSight,
   nextWaypoint,
@@ -60,4 +61,94 @@ test("local steering leaves a narrow passage that has no coarse grid cell", () =
   assert.equal(hasLineOfSight(map, mover, point), true);
   assert.ok(point.y > mover.y);
   assert.ok(Math.abs(point.x - mover.x) < 1e-6);
+});
+
+test("fixed-step movers clear a U obstruction and OSM rally routes without jitter", () => {
+  const world = createWorld("paris", "protester", "Test", "test", 0, 0, 73);
+  const uMap = {
+    ...world.map,
+    w: 500,
+    h: 400,
+    buildings: [
+      {
+        kind: "block" as const,
+        x: 150,
+        y: 120,
+        w: 40,
+        h: 200,
+        hp: 1,
+        maxHp: 1,
+      },
+      {
+        kind: "block" as const,
+        x: 270,
+        y: 120,
+        w: 40,
+        h: 200,
+        hp: 1,
+        maxHp: 1,
+      },
+      {
+        kind: "block" as const,
+        x: 150,
+        y: 280,
+        w: 160,
+        h: 40,
+        hp: 1,
+        maxHp: 1,
+      },
+    ],
+  };
+  const move = (
+    map: MapDef,
+    e: Entity,
+    goal: { x: number; y: number },
+    limit: number,
+  ) => {
+    for (
+      let i = 0;
+      i < limit && Math.hypot(e.x - goal.x, e.y - goal.y) > 8;
+      i++
+    ) {
+      const waypoint = nextWaypoint(map, e, goal.x, goal.y);
+      const d = Math.hypot(waypoint.x - e.x, waypoint.y - e.y);
+      if (d > 0) {
+        const step = Math.min(d, e.speed * 0.05);
+        Object.assign(
+          e,
+          collideBuildings(
+            map,
+            e.x + ((waypoint.x - e.x) / d) * step,
+            e.y + ((waypoint.y - e.y) / d) * step,
+            9,
+          ),
+        );
+      }
+      assert.equal(isWalkable(map, e.x, e.y, 9), true);
+    }
+    return Math.hypot(e.x - goal.x, e.y - goal.y);
+  };
+  const uMover = {
+    ...world.player!,
+    x: 230,
+    y: 240,
+    path: undefined,
+    pathTarget: undefined,
+  };
+  assert.ok(move(uMap, uMover, { x: 230, y: 70 }, 1200) < 8);
+
+  for (const map of Object.values(MAPS)) {
+    const seeded = createWorld(map.id, "protester", "Test", "test", 0, 0, 73);
+    const mover = {
+      ...seeded.player!,
+      x: map.rallyPoints[0].x,
+      y: map.rallyPoints[0].y,
+      path: undefined,
+      pathTarget: undefined,
+    };
+    assert.ok(
+      move(map, mover, map.rallyPoints.at(-1)!, 5000) < 8,
+      `${map.id} rally route stalled`,
+    );
+  }
 });

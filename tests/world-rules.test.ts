@@ -16,6 +16,7 @@ import {
   exitBuilding,
   insidePosition,
   collectResource,
+  lootShop,
   markWanted,
   validDetention,
   emitEvent,
@@ -67,10 +68,10 @@ test("objective needs sustained cooperation, can be contested, captures once and
   Object.assign(b, { x: objective.x + 20, y: objective.y });
   interactObjective(w, a);
   updateWorldRules(w, 1);
-  assert.equal(objective.progress, 0);
+  assert.equal(objective.progress, 1);
   interactObjective(w, b);
   for (let i = 0; i < 5; i++) updateWorldRules(w, 1);
-  assert.equal(objective.progress, 5);
+  assert.equal(objective.progress, 6);
   const npc = structuredClone(a);
   Object.assign(npc, {
     id: w.nextId++,
@@ -87,7 +88,7 @@ test("objective needs sustained cooperation, can be contested, captures once and
   Object.assign(cop, { x: objective.x, y: objective.y + 20 });
   updateWorldRules(w, 1);
   assert.equal(objective.status, "contested");
-  assert.equal(objective.progress, 4);
+  assert.equal(objective.progress, 5);
   cop.x += 200;
   for (let i = 0; i < 10; i++) updateWorldRules(w, 1);
   assert.equal(
@@ -96,7 +97,7 @@ test("objective needs sustained cooperation, can be contested, captures once and
   );
   assert.equal(
     w.events.filter((e) => e.type === "objective_contribution").length,
-    3,
+    2,
   );
   const capture = w.events.find((e) => e.type === "objective_capture");
   assert.equal(capture?.actorId, a.id);
@@ -116,7 +117,7 @@ test("objective needs sustained cooperation, can be contested, captures once and
   assert.equal(w.factionScores?.protester, 1);
 });
 
-test("NPCs support a Constitution Book capture only after a human contributes", () => {
+test("only a human holding the Constitution Book interaction can capture it", () => {
   const w = persistent(),
     objective = w.objective!,
     human = spawnPlayer(w, "protester", "A", "A")!;
@@ -136,6 +137,67 @@ test("NPCs support a Constitution Book capture only after a human contributes", 
   interactObjective(w, human);
   for (let i = 0; i < objective.captureSeconds; i++) updateWorldRules(w, 1);
   assert.equal(w.factionScores?.protester, 1);
+  assert.equal(objective.contributors[npc.id], undefined);
+  assert.equal(
+    w.events.some(
+      (event) =>
+        event.type === "objective_contribution" && event.actorId === npc.id,
+    ),
+    false,
+  );
+});
+
+test("NPCs cannot activate the Constitution Book, even with a profile ID", () => {
+  const w = persistent(),
+    objective = w.objective!,
+    human = spawnPlayer(w, "protester", "A", "A")!;
+  const npc = structuredClone(human);
+  Object.assign(npc, {
+    id: w.nextId++,
+    isPlayer: false,
+    profileId: undefined,
+    remote: false,
+    name: "NPC",
+    x: objective.x,
+    y: objective.y,
+  });
+  w.entities.push(npc);
+  assert.equal(interactObjective(w, npc), false);
+  npc.profileId = "not-a-player";
+  assert.equal(interactObjective(w, npc), false);
+  npc.objectiveUntil = w.time + 100;
+  updateWorldRules(w, 1);
+  assert.equal(objective.progress, 0);
+  assert.equal(w.factionScores?.protester, 0);
+});
+
+test("an NPC cannot complete or contribute alongside a nearby human", () => {
+  const w = persistent(),
+    objective = w.objective!,
+    human = spawnPlayer(w, "protester", "A", "A")!;
+  const npc = structuredClone(human);
+  Object.assign(npc, {
+    id: w.nextId++,
+    profileId: undefined,
+    isPlayer: false,
+    remote: false,
+    name: "NPC",
+    x: objective.x + 20,
+    y: objective.y,
+  });
+  w.entities.push(npc);
+  Object.assign(human, { x: objective.x, y: objective.y });
+  interactObjective(w, human);
+  for (let i = 0; i < objective.captureSeconds; i++) updateWorldRules(w, 1);
+  assert.equal(w.factionScores?.protester, 1);
+  assert.deepEqual(Object.keys(objective.contributors), []);
+  assert.equal(
+    w.events.some(
+      (event) =>
+        event.type === "objective_contribution" && event.actorId === npc.id,
+    ),
+    false,
+  );
 });
 
 test("defensive victory is local to an objective cycle", () => {
@@ -279,6 +341,29 @@ test("wanted expires, essentials replenish predictably and witnessed events stay
   assert.equal(new Set(w.events.map((e) => e.id)).size, 256);
 });
 
+test("shop looting restores only essentials, consumes stock and has a human cooldown", () => {
+  const w = persistent(),
+    p = spawnPlayer(w, "protester", "A", "A")!,
+    shop = w.map.buildings.find((building) => building.kind === "shop")!;
+  Object.assign(p, shop.entrance, { hunger: 30, thirst: 35 });
+  const stock = shop.shopStock!;
+  assert.equal(lootShop(w, p), true);
+  assert.equal(p.hunger, 70);
+  assert.equal(p.thirst, 75);
+  assert.equal(p.hp, p.maxHp);
+  assert.equal(p.wanted, 1);
+  assert.equal(stock.food, 2);
+  assert.equal(stock.water, 2);
+  assert.equal(lootShop(w, p), false);
+  assert.equal(stock.food, 2);
+  assert.equal(stock.water, 2);
+  w.time = p.shopLootUntil!;
+  assert.equal(lootShop(w, p), true);
+  assert.equal(p.hunger, 100);
+  assert.equal(p.thirst, 100);
+  assert.equal(p.wanted, 2);
+});
+
 test("adaptive bot population replenishes without exceeding budget", () => {
   const w = persistent();
   w.populationAt = 0;
@@ -286,7 +371,9 @@ test("adaptive bot population replenishes without exceeding budget", () => {
     w.populationAt = 0;
     update(w, 0.05, idle);
   }
-  assert.ok(w.entities.length >= 40 && w.entities.length <= 54);
+  assert.equal(w.entities.length, 56);
+  assert.equal(w.entities.filter((e) => e.kind === "police").length, 14);
+  assert.equal(w.entities.filter((e) => e.kind === "military").length, 4);
   assert.ok(w.entities.some((e) => e.journalist));
   for (let i = 0; i < 20; i++) spawnPlayer(w, "protester", `H${i}`, `H${i}`);
   for (let i = 0; i < 90; i++) {

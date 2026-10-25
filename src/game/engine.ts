@@ -1,17 +1,20 @@
-import { MAPS, collideBuildings } from "./maps";
+import { MAPS, collideBuildings, isWalkable } from "./maps";
 import {
   emitEvent,
   initializeWorldRules,
   updateWorldRules,
   markWanted,
   validDetention,
-  insidePosition,
   interactionClear,
   enterBuilding,
 } from "./world-rules";
 import { nextWaypoint, hasLineOfSight } from "./navigation";
 import { formationSlot, rallyTarget } from "./ai";
+import { supplyOption } from "./equipment";
+import { moveCharacter } from "./movement";
+import { placeName } from "./place-names";
 import type {
+  Building,
   Entity,
   World,
   MapId,
@@ -222,6 +225,89 @@ function makeEntity(
   };
 }
 
+function hurtEntity(target: Entity, damage: number) {
+  if (target.shield && (target.shieldHp ?? 50) > 0) {
+    const absorbed = Math.min(target.shieldHp ?? 50, damage);
+    const durability = (target.shieldHp ?? 50) - absorbed;
+    target.shieldHp = Math.max(0, durability);
+    damage -= absorbed;
+    if (!target.shieldHp) target.shield = false;
+  }
+  target.hp -= damage;
+  return damage;
+}
+
+const rectDistance = (point: { x: number; y: number }, rect: Building) =>
+  Math.hypot(
+    Math.max(rect.x - point.x, 0, point.x - rect.x - rect.w),
+    Math.max(rect.y - point.y, 0, point.y - rect.y - rect.h),
+  );
+
+function barricadeApproaches(map: World["map"], barricade: Building) {
+  return [
+    { x: barricade.x + barricade.w / 2, y: barricade.y - 12 },
+    { x: barricade.x + barricade.w / 2, y: barricade.y + barricade.h + 12 },
+    { x: barricade.x - 12, y: barricade.y + barricade.h / 2 },
+    { x: barricade.x + barricade.w + 12, y: barricade.y + barricade.h / 2 },
+  ].filter((point) => isWalkable(map, point.x, point.y, 9));
+}
+
+function damageBarricade(w: World, barricade: Building, damage: number) {
+  barricade.hp = Math.max(0, barricade.hp - damage);
+  if (!barricade.hp) barricade.broken = true;
+  fx(
+    w,
+    "text",
+    barricade.x + barricade.w / 2,
+    barricade.y - 8,
+    0.8,
+    barricade.broken ? "BROKEN" : `-${damage}`,
+    "#ffd75e",
+  );
+}
+
+function addRoadsidePickups(w: World, count: number) {
+  const roadsideItems = [
+    "stones",
+    "stones",
+    "stick",
+    "bat",
+    "firstaid",
+    "shield",
+  ] as const;
+  for (let i = 0; i < count; i++) {
+    const point = w.map.rallyPoints[i % w.map.rallyPoints.length];
+    const item = makeEntity(
+      w,
+      "crate",
+      "protester",
+      point.x + (random(w) - 0.5) * 180,
+      point.y + (random(w) - 0.5) * 120,
+      "Roadside supplies",
+    );
+    item.crateFaction = "protester";
+    item.crateItem = roadsideItems[i % roadsideItems.length];
+    item.roadsidePickup = true;
+    Object.assign(item, collideBuildings(w.map, item.x, item.y, 9));
+    w.entities.push(item);
+  }
+}
+
+export function initializeRoadsidePickups(w: World) {
+  if (!w.entities.some((entity) => entity.roadsidePickup && !entity.remove))
+    addRoadsidePickups(w, 8);
+  w.roadsideRefillAt ??= w.time + 60;
+}
+
+function refillRoadsidePickups(w: World) {
+  if (w.time < (w.roadsideRefillAt ?? Infinity)) return;
+  w.roadsideRefillAt = w.time + 60;
+  const active = w.entities.filter(
+    (entity) => entity.roadsidePickup && !entity.remove,
+  ).length;
+  addRoadsidePickups(w, Math.min(4, Math.max(0, 8 - active)));
+}
+
 function instruments(): Instrument[] {
   const mk = (
     id: string,
@@ -396,6 +482,7 @@ export function createWorld(
       ),
     );
   }
+  initializeRoadsidePickups(w);
   if (role !== "watcher") {
     const s = map.spawns[role];
     const p = makeEntity(w, role, role, s.x, s.y, playerName);
@@ -409,7 +496,7 @@ export function createWorld(
   }
   feed(
     w,
-    `Live from ${map.name} — ${map.country}. Crowd is gathering.`,
+    `Live from ${placeName(map.name)} — ${map.country}. Crowd is gathering.`,
     "info",
   );
   feed(
@@ -434,12 +521,20 @@ function moveTo(
   speed: number,
   dt: number,
 ): boolean {
-  if (Math.hypot(tx - e.x, ty - e.y) < 6) return true;
+  if (Math.hypot(tx - e.x, ty - e.y) < 6) {
+    e.moving = false;
+    e.running = false;
+    return true;
+  }
   const waypoint = nextWaypoint(w.map, e, tx, ty);
   const dx = waypoint.x - e.x,
     dy = waypoint.y - e.y;
   const d = Math.hypot(dx, dy);
-  if (d < 0.001) return false;
+  if (d < 0.001) {
+    e.moving = false;
+    e.running = false;
+    return false;
+  }
   e.dir = Math.atan2(dy, dx);
   const step = Math.min(d, speed * dt);
   const nx = e.x + (dx / d) * step,
@@ -711,10 +806,15 @@ function deployGas(w: World, e: Entity, tx: number, ty: number) {
   say(e, "Tear gas out!");
 }
 
-export function spawnSupply(w: World, faction: "protester" | "police") {
+export function spawnSupply(
+  w: World,
+  faction: "protester" | "police",
+  kind: "essentials" | "gear" | "arms" = "essentials",
+) {
   if (
-    w.entities.filter((e) => e.kind === "truck" || e.kind === "crate").length >=
-    20
+    w.entities.filter(
+      (e) => !e.roadsidePickup && (e.kind === "truck" || e.kind === "crate"),
+    ).length >= 20
   )
     return;
   const route = w.map.truckRoutes[faction];
@@ -728,6 +828,7 @@ export function spawnSupply(w: World, faction: "protester" | "police") {
     faction === "police" ? "Supply Van" : "Pickup Truck",
   );
   t.truckFaction = faction;
+  t.supplyKind = kind;
   t.truckPath = [...route];
   t.truckIdx = 1;
   t.state = "drive";
@@ -785,6 +886,31 @@ function updateProtester(w: World, e: Entity, dt: number) {
       260,
     );
     if (human) {
+      const barricade = w.map.buildings
+        .filter(
+          (building) =>
+            building.barricade &&
+            !building.broken &&
+            building.hp > 0 &&
+            rectDistance(human, building) <= 260,
+        )
+        .sort((a, b) => rectDistance(human, a) - rectDistance(human, b))[0];
+      const approach = barricade
+        ? barricadeApproaches(w.map, barricade).sort(
+            (a, b) => dist(e, a) - dist(e, b),
+          )[0]
+        : undefined;
+      if (barricade && approach) {
+        e.target = approach;
+        e.state = "march";
+        if (rectDistance(e, barricade) <= 22) {
+          if (e.cooldown <= 0) {
+            damageBarricade(w, barricade, 6 + Math.floor(random(w) * 5));
+            e.cooldown = 1.2;
+          }
+        } else moveTo(w, e, approach.x, approach.y, e.speed, dt);
+        return;
+      }
       e.target = rallyTarget(e, human, 90, w.time);
       e.state = "march";
       moveTo(w, e, e.target.x, e.target.y, e.speed, dt);
@@ -985,7 +1111,7 @@ function updatePolice(w: World, e: Entity, dt: number) {
       e.state = "engage";
       e.cooldown = 1.4;
       violent.stun = Math.max(violent.stun, 1.1);
-      violent.hp -= e.shield ? 8 : 12;
+      hurtEntity(violent, 12);
       w.tension = clamp(w.tension + 0.8, 0, 100);
       fx(w, "ring", violent.x, violent.y, 0.3, undefined, "#8fb7ff");
       if (violent.hp <= 0) downEntity(w, violent);
@@ -1223,9 +1349,12 @@ function updateTruck(w: World, e: Entity, dt: number) {
     e.stateT -= dt;
     if (e.stateT <= 0) {
       const dep = w.map.depots[e.truckFaction!];
+      const count = e.supplyKind === "arms" ? 1 : 4;
       for (
         let i = 0;
-        i < 4 && w.entities.filter((o) => o.kind === "crate").length < 20;
+        i < count &&
+        w.entities.filter((o) => o.kind === "crate" && !o.roadsidePickup)
+          .length < 20;
         i++
       ) {
         const c = makeEntity(
@@ -1238,12 +1367,25 @@ function updateTruck(w: World, e: Entity, dt: number) {
         );
         Object.assign(c, collideBuildings(w.map, c.x, c.y, 9));
         c.crateFaction = e.truckFaction;
+        c.supplyKind = e.supplyKind ?? "essentials";
+        c.crateItem =
+          c.supplyKind === "arms"
+            ? "firearm"
+            : c.supplyKind === "gear"
+              ? e.truckFaction === "police"
+                ? i % 2
+                  ? "gas"
+                  : "shield"
+                : (["stick", "bat", "shield", "stones"] as const)[i]
+              : i % 2
+                ? "firstaid"
+                : "rations";
         w.entities.push(c);
       }
       emitEvent(w, "supply_delivery", {
         actorId: e.id,
         faction: e.truckFaction,
-        amount: 4,
+        amount: count,
       });
       feed(
         w,
@@ -1293,6 +1435,98 @@ export function doAction(
       w.earned += 2;
       if (w.persistent) emitEvent(w, "chant", { actorId: p.id, amount: 1 });
       fx(w, "ring", p.x, p.y, 0.8, undefined, "#ffb14d");
+    } else if (action === "special") {
+      if (p.cooldown > 0) return;
+      if (p.equipment === "firearm") {
+        if ((p.ammo ?? 0) <= 0)
+          return feed(w, "No rounds. Collect an arms supply crate.", "info");
+        const t = nearest(
+          w,
+          p,
+          (o) =>
+            o.kind === "police" &&
+            interactionClear(w, p, o) &&
+            (!!p.buildingId || hasLineOfSight(w.map, p, o)),
+          220,
+          targetId,
+        );
+        if (!t) return feed(w, "No officer in range.", "info");
+        p.ammo = (p.ammo ?? 0) - 1;
+        p.cooldown = 1.5;
+        p.violentT = 8;
+        p.everViolent = true;
+        if (w.persistent) markWanted(w, p);
+        w.stats.shots++;
+        w.violenceRate += 1;
+        w.tension = clamp(w.tension + 2, 0, 100);
+        w.projectiles.push({
+          x: p.x,
+          y: p.y,
+          sx: p.x,
+          sy: p.y,
+          tx: t.x,
+          ty: t.y,
+          t: 0,
+          dur: 0.12,
+          kind: "bullet",
+          from: p.id,
+          targetId: t.id,
+          damage: 24,
+        });
+      } else {
+        const t = nearest(
+          w,
+          p,
+          (o) =>
+            o.kind === "police" &&
+            interactionClear(w, p, o) &&
+            (!!p.buildingId || hasLineOfSight(w.map, p, o)),
+          32,
+          targetId,
+        );
+        if (!t) {
+          const barricade =
+            targetId === undefined
+              ? w.map.buildings
+                  .filter(
+                    (building) =>
+                      building.barricade &&
+                      !building.broken &&
+                      building.hp > 0 &&
+                      rectDistance(p, building) <= 36,
+                  )
+                  .sort((a, b) => rectDistance(p, a) - rectDistance(p, b))
+                  .find((building) =>
+                    barricadeApproaches(w.map, building).some((point) =>
+                      hasLineOfSight(w.map, p, point),
+                    ),
+                  )
+              : undefined;
+          if (!barricade) return feed(w, "No officer in reach.", "info");
+          const damage =
+            p.equipment === "bat" ? 24 : p.equipment === "stick" ? 14 : 5;
+          p.cooldown = 1.2;
+          p.violentT = 8;
+          p.everViolent = true;
+          if (w.persistent) markWanted(w, p);
+          w.violenceRate += 0.5;
+          w.tension = clamp(w.tension + 1, 0, 100);
+          damageBarricade(w, barricade, damage);
+          return;
+        }
+        const damage =
+          p.equipment === "bat" ? 24 : p.equipment === "stick" ? 14 : 5;
+        p.cooldown = 1.2;
+        p.violentT = 8;
+        p.everViolent = true;
+        if (w.persistent) markWanted(w, p);
+        hurtEntity(t, damage);
+        t.stun = Math.max(t.stun, 0.3);
+        w.tension = clamp(w.tension + 1, 0, 100);
+        w.violenceRate += 0.5;
+        fx(w, "text", t.x, t.y - 18, 1, `-${damage}`, "#ff8f6b");
+        if (t.hp <= 0) downEntity(w, t);
+      }
     } else if (action === "secondary") {
       if (p.stones > 0 && p.cooldown <= 0) {
         p.stones--;
@@ -1349,7 +1583,7 @@ export function doAction(
       if (t) {
         p.cooldown = 1.2;
         t.stun = 1.4;
-        t.hp -= 12;
+        hurtEntity(t, 12);
         w.tension = clamp(w.tension + 1, 0, 100);
         fx(w, "ring", t.x, t.y, 0.3, undefined, "#8fb7ff");
         if (t.hp <= 0) downEntity(w, t);
@@ -1470,8 +1704,9 @@ export function fund(
     w.over ||
     !Number.isSafeInteger(amount) ||
     amount <= 0 ||
-    w.entities.filter((e) => e.kind === "truck" || e.kind === "crate").length >=
-      20
+    w.entities.filter(
+      (e) => !e.roadsidePickup && (e.kind === "truck" || e.kind === "crate"),
+    ).length >= 20
   )
     return;
   if (w.wallet < amount) {
@@ -1578,7 +1813,7 @@ function marketTick(w: World) {
     ins.prev = ins.price;
     const noise = (random(w) - 0.5) * (2 + w.tension / 25);
     ins.price = clamp(
-      ins.price + (fair[ins.id] - ins.price) * 0.18 + noise,
+      ins.price + (fair[ins.id] - ins.price) * 0.22 + noise * 0.25,
       3,
       400,
     );
@@ -1638,19 +1873,10 @@ export function updatePlayer(
         p.actingOn = null;
       }
       if (dx || dy) {
-        const l = Math.hypot(dx, dy);
-        dx /= l;
-        dy /= l;
-        const sp =
-          p.speed *
-          (input.sprint ? 1.5 : 1) *
-          (w.persistent && Math.min(p.hunger, p.thirst) < 30 ? 0.8 : 1);
-        p.dir = Math.atan2(dy, dx);
-        const np = p.buildingId
-          ? insidePosition(w, p, p.x + dx * sp * dt, p.y + dy * sp * dt)
-          : collideBuildings(w.map, p.x + dx * sp * dt, p.y + dy * sp * dt, 9);
-        p.x = np.x;
-        p.y = np.y;
+        const moved = moveCharacter(w.map, p, input, dt, w.persistent);
+        p.x = moved.x;
+        p.y = moved.y;
+        p.dir = moved.dir;
       }
       // player detain channel
       if (p.state === "detain" && p.actingOn != null) {
@@ -1688,8 +1914,9 @@ export function update(w: World, dt: number, input: InputState) {
   if (w.over || !Number.isFinite(dt) || dt <= 0) return;
   dt = Math.min(dt, 0.05);
   w.time += dt;
+  refillRoadsidePickups(w);
   w.tick++;
-  w.violenceRate = Math.max(0, w.violenceRate - dt * 0.35);
+  w.violenceRate = clamp(w.violenceRate * Math.exp(-dt / 15), 0, 100);
 
   const p = w.player;
   if (p && !p.remote) updatePlayer(w, p, input, dt);
@@ -1844,15 +2071,27 @@ export function update(w: World, dt: number, input: InputState) {
           w,
           e,
           (o) =>
+            (!e.roadsidePickup || o.isPlayer) &&
+            (e.supplyKind !== "arms" || o.isPlayer) &&
             o.faction === e.crateFaction &&
             (o.kind === "protester" || o.kind === "police"),
           24,
         );
         if (taker) {
           e.remove = true;
-          if (e.crateFaction === "protester") {
-            const roll = random(w);
-            if (roll < 0.5) {
+          if (e.crateItem === "rations") {
+            taker.hunger = Math.min(100, taker.hunger + 40);
+            taker.thirst = Math.min(100, taker.thirst + 40);
+            if (taker.isPlayer) feed(w, "Food and water restored.", "good");
+          } else if (e.crateFaction === "protester") {
+            const item =
+              e.crateItem ??
+              (random(w) < 0.5
+                ? "stones"
+                : random(w) < 0.6
+                  ? "shield"
+                  : "banner");
+            if (item === "stones") {
               taker.stones = Math.min(12, taker.stones + 3);
               if (taker.isPlayer)
                 feed(
@@ -1860,8 +2099,28 @@ export function update(w: World, dt: number, input: InputState) {
                   "📦 +3 stones. Careful — throwing flags you violent.",
                   "good",
                 );
-            } else if (roll < 0.8) {
+            } else if (
+              item === "stick" ||
+              item === "bat" ||
+              item === "firearm"
+            ) {
+              taker.equipment = item;
+              if (item === "firearm") taker.ammo = 3;
+              if (taker.isPlayer)
+                feed(
+                  w,
+                  item === "firearm"
+                    ? "📦 Fictional sidearm supply: 3 rounds."
+                    : `📦 Equipped ${item}. Use special to strike.`,
+                  "good",
+                );
+            } else if (item === "firstaid") {
+              taker.hp = Math.min(taker.maxHp, taker.hp + 35);
+              if (taker.isPlayer)
+                feed(w, "📦 First aid restored 35 health.", "good");
+            } else if (item === "shield") {
               taker.shield = true;
+              taker.shieldHp = 50;
               taker.maxHp = 140;
               taker.hp = Math.min(taker.hp + 40, 140);
               if (taker.isPlayer)
@@ -1873,8 +2132,13 @@ export function update(w: World, dt: number, input: InputState) {
                 feed(w, "📦 Fresh banner! Crowd morale +5.", "good");
             }
           } else {
-            const roll = random(w);
-            if (roll < 0.5) {
+            const item =
+              e.crateItem ?? (random(w) < 0.5 ? "firstaid" : "shield");
+            if (item === "firstaid") {
+              taker.hp = Math.min(taker.maxHp, taker.hp + 35);
+              if (taker.isPlayer)
+                feed(w, "📦 First aid restored 35 health.", "good");
+            } else if (item === "gas") {
               taker.gas = Math.min(3, taker.gas + 1);
               if (taker.isPlayer)
                 feed(
@@ -1884,6 +2148,7 @@ export function update(w: World, dt: number, input: InputState) {
                 );
             } else {
               taker.shield = true;
+              taker.shieldHp = 75;
               taker.maxHp = 150;
               taker.hp = Math.min(taker.hp + 50, 150);
               if (taker.isPlayer) feed(w, "📦 Riot shield: +50 HP.", "good");
@@ -1984,31 +2249,28 @@ export function update(w: World, dt: number, input: InputState) {
             hit.kind === "military" ||
             hit.kind === "civilian")
         ) {
-          hit.hp -= hit.shield ? 6 : 14;
+          const damage = hurtEntity(hit, 14);
           if (w.persistent && hit.hp <= 25) {
             const attacker = w.entities.find((e) => e.id === pr.from);
             if (attacker) attacker.imminentThreatUntil = w.time + 2;
           }
-          fx(
-            w,
-            "text",
-            hit.x,
-            hit.y - 18,
-            1,
-            `-${hit.shield ? 6 : 14}`,
-            "#ff8f6b",
-          );
+          fx(w, "text", hit.x, hit.y - 18, 1, `-${damage}`, "#ff8f6b");
           if (hit.hp <= 0) downEntity(w, hit);
           damaged = true;
         }
         for (const s of w.map.buildings) {
-          if (s.kind !== "shop" || s.broken) continue;
+          if ((!s.barricade && s.kind !== "shop") || s.broken) continue;
           if (
             pr.tx > s.x - 8 &&
             pr.tx < s.x + s.w + 8 &&
             pr.ty > s.y - 8 &&
             pr.ty < s.y + s.h + 8
           ) {
+            if (s.barricade) {
+              damageBarricade(w, s, 18);
+              damaged = true;
+              break;
+            }
             s.hp -= 18;
             w.damage += 18;
             damaged = true;
@@ -2036,9 +2298,9 @@ export function update(w: World, dt: number, input: InputState) {
           t.state !== "down" &&
           t.state !== "detained"
         ) {
-          t.hp -= 55;
-          t.stun = 1.5;
-          fx(w, "text", t.x, t.y - 18, 1, "-55", "#ff5d5d");
+          const damage = hurtEntity(t, pr.damage ?? 55);
+          if ((pr.damage ?? 55) === 55) t.stun = 1.5;
+          fx(w, "text", t.x, t.y - 18, 1, `-${damage}`, "#ff5d5d");
           if (t.hp <= 0) downEntity(w, t);
         }
       } else if (pr.kind === "gascan") {
@@ -2077,7 +2339,7 @@ export function update(w: World, dt: number, input: InputState) {
   w.marketT += dt;
   if (w.marketT >= 1.5) {
     w.marketT = 0;
-    marketTick(w);
+    if (!w.persistent) marketTick(w);
     resolveBets(w);
   }
 
@@ -2133,8 +2395,8 @@ function replenishPopulation(w: World) {
   const humans = w.entities.filter((e) => e.isPlayer && !e.remove).length;
   const targets = {
     protester: Math.max(12, 30 - humans),
-    police: Math.max(6, 12 - Math.floor(humans / 2)),
-    military: 2,
+    police: 14,
+    military: 4,
     civilian: 8,
   } as const;
   for (const kind of ["protester", "police", "military", "civilian"] as const) {

@@ -1,4 +1,9 @@
-import { MAPS, collideBuildings } from "../game/maps";
+import {
+  MAPS,
+  collideBuildings,
+  ensureObjectiveDefenses,
+  ensureStreetShops,
+} from "../game/maps";
 import { initializeWorldRules } from "../game/world-rules";
 import type { Entity, World } from "../game/types";
 import type { Store } from "./store";
@@ -7,7 +12,14 @@ import type { Store } from "./store";
 export function upgradeWorldMap(w: World, store: Store): void {
   const current = MAPS[w.map.id];
   if (w.map.roadWays && w.map.w === current.w && w.map.h === current.h) {
+    ensureStreetShops(w.map);
+    if (!w.map.buildings.some((b) => b.barricade)) {
+      w.map.objectivePoint = { ...current.objectivePoint! };
+      if (w.objective) Object.assign(w.objective, w.map.objectivePoint);
+    }
+    ensureObjectiveDefenses(w.map);
     initializeWorldRules(w);
+    store.saveWorld(w.map.id, w);
     return;
   }
   const old = w.map;

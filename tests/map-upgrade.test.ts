@@ -5,6 +5,34 @@ import { upgradeWorldMap } from "../src/server/map-upgrade";
 import { createWorld, spawnPlayer } from "../src/game/engine";
 import { MAPS } from "../src/game/maps";
 
+test("same-size saved districts receive defenses and shops without resetting players or progress", () => {
+  const store = new Store(":memory:");
+  try {
+    const w = createWorld("delhi", "protester", "Saved", "saved", 0, 0, 42, {
+      persistent: true,
+    });
+    w.map.buildings = w.map.buildings.filter((b) => !b.barricade);
+    w.objective!.progress = 3;
+    const before = structuredClone(w.player);
+    upgradeWorldMap(w, store);
+    assert.equal(w.map.buildings.filter((b) => b.barricade).length, 4);
+    assert.ok(w.map.buildings.filter((b) => b.kind === "shop").length >= 8);
+    assert.equal(w.objective!.progress, 3);
+    assert.deepEqual(w.player, before);
+    const barricade = w.map.buildings.find((b) => b.barricade)!;
+    barricade.hp = 0;
+    barricade.broken = true;
+    w.map.policeLine = [];
+    upgradeWorldMap(w, store);
+    assert.equal(w.map.buildings.filter((b) => b.barricade).length, 4);
+    assert.equal(w.map.policeLine.length, 14);
+    assert.equal(barricade.hp, 0);
+    assert.equal(barricade.broken, true);
+  } finally {
+    store.close();
+  }
+});
+
 test("district expansion translates active and offline saved characters exactly once", () => {
   const store = new Store(":memory:");
   try {

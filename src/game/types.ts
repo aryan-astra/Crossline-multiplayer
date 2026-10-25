@@ -18,6 +18,8 @@ export interface Building extends Rect {
   hp: number;
   maxHp: number;
   broken?: boolean;
+  barricade?: boolean;
+  shopStock?: { food: number; water: number; nextRefill: number };
   awning?: string;
   id?: string;
   entrance?: { x: number; y: number };
@@ -129,6 +131,9 @@ export interface Entity {
   stones: number;
   gas: number;
   shield: boolean;
+  shieldHp?: number;
+  equipment?: "stick" | "bat" | "firearm" | "firstaid";
+  ammo?: number;
   sign: boolean;
   cooldown: number;
   chantT: number;
@@ -148,6 +153,19 @@ export interface Entity {
   truckPath?: { x: number; y: number }[];
   truckIdx?: number;
   crateFaction?: "protester" | "police";
+  crateItem?:
+    | "rations"
+    | "stones"
+    | "stick"
+    | "bat"
+    | "firearm"
+    | "firstaid"
+    | "shield"
+    | "banner"
+    | "gas";
+  roadsidePickup?: boolean;
+  shopLootUntil?: number;
+  supplyKind?: "essentials" | "gear" | "arms";
   betWins?: number;
   everViolent?: boolean;
   actingOn?: number | null;
@@ -168,6 +186,7 @@ export interface Projectile {
   kind: "stone" | "bullet" | "gascan";
   from: number;
   targetId?: number;
+  damage?: number;
 }
 
 export interface Effect {
@@ -260,6 +279,7 @@ export interface ConstitutionBook {
 }
 export interface World {
   factionScores?: { protester: number; police: number };
+  roadsideRefillAt?: number;
   persistent?: boolean;
   tick: number;
   eventSeq: number;

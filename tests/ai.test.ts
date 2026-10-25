@@ -176,6 +176,7 @@ test("peaceful bots do not gather at the objective after their rally anchors", (
 
 test("nearby human protesters draw support only after tension escalates", () => {
   const w = createWorld("delhi", "watcher", "Watcher", "watcher", 0, 0, 37);
+  w.map.buildings = w.map.buildings.filter((building) => !building.barricade);
   const bot = w.entities.find((e) => e.kind === "protester")!;
   const human = {
     ...bot,

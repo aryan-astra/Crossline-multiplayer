@@ -73,3 +73,91 @@ test("large maps choose a nearby open start cell when replanning", () => {
   assert.ok(mover.path?.length);
   assert.ok(Math.hypot(waypoint.x - mover.x, waypoint.y - mover.y) <= 40);
 });
+
+test("small target jitter reuses a route and unreachable targets do not replan forever", () => {
+  const world = createWorld("paris", "protester", "Test", "test", 0, 0);
+  const map = structuredClone(world.map);
+  map.w = map.h = 400;
+  map.buildings = [
+    { kind: "block", x: 160, y: 80, w: 80, h: 240, hp: 100, maxHp: 100 },
+  ];
+  const mover: Entity = {
+    ...world.player!,
+    x: 100,
+    y: 200,
+    path: undefined,
+    pathTarget: undefined,
+  };
+  assert.deepEqual(nextWaypoint(map, mover, Number.NaN, 200), {
+    x: mover.x,
+    y: mover.y,
+  });
+  nextWaypoint(map, mover, 300, 200);
+  const route = mover.path;
+  for (let i = 0; i < 100; i++)
+    nextWaypoint(map, mover, 300 + Math.sin(i) * 10, 200 + Math.cos(i) * 10);
+  assert.equal(mover.path, route);
+
+  const blockedMap = {
+    ...map,
+    buildings: [
+      {
+        kind: "block" as const,
+        x: 190,
+        y: 0,
+        w: 20,
+        h: 400,
+        hp: 100,
+        maxHp: 100,
+      },
+    ],
+  };
+  mover.x = 100;
+  mover.y = 200;
+  mover.path = undefined;
+  mover.pathTarget = undefined;
+  for (let i = 0; i < 100; i++) {
+    const waypoint = nextWaypoint(blockedMap, mover, 300, 200);
+    mover.x = waypoint.x;
+    mover.y = waypoint.y;
+  }
+  const exhausted = mover.path;
+  assert.deepEqual(exhausted, []);
+  for (let i = 0; i < 100; i++) nextWaypoint(blockedMap, mover, 300, 200);
+  assert.equal(mover.path, exhausted);
+});
+
+test("cached unreachable routes retry when a barricade breaks", () => {
+  const world = createWorld("paris", "protester", "Test", "test", 0, 0);
+  const map = structuredClone(world.map);
+  map.w = map.h = 400;
+  const barricade = {
+    kind: "wall" as const,
+    barricade: true,
+    x: 190,
+    y: 0,
+    w: 20,
+    h: 400,
+    hp: 100,
+    maxHp: 100,
+    broken: false as boolean,
+  };
+  map.buildings = [barricade];
+  const mover: Entity = {
+    ...world.player!,
+    x: 100,
+    y: 200,
+    path: undefined,
+    pathTarget: undefined,
+  };
+
+  for (let i = 0; i < 100; i++) {
+    const waypoint = nextWaypoint(map, mover, 300, 200);
+    mover.x = waypoint.x;
+    mover.y = waypoint.y;
+  }
+  assert.deepEqual(mover.path, []);
+
+  barricade.broken = true;
+  assert.deepEqual(nextWaypoint(map, mover, 300, 200), { x: 300, y: 200 });
+});

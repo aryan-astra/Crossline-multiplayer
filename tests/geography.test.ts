@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createWorld } from "../src/game/engine";
-import { MAPS, collideBuildings, isWalkable } from "../src/game/maps";
+import {
+  MAPS,
+  collideBuildings,
+  ensureObjectiveDefenses,
+  ensureStreetShops,
+  isWalkable,
+} from "../src/game/maps";
 import { hasLineOfSight, nextWaypoint } from "../src/game/navigation";
+import type { MapDef } from "../src/game/types";
 import {
   enterBuilding,
   exitBuilding,
@@ -11,9 +18,92 @@ import {
 
 test("bundled OSM footprints and navigation anchors stay on open ground", () => {
   for (const map of Object.values(MAPS)) {
+    const objective = map.objectivePoint!;
     assert.ok(map.buildings.length >= 80);
     assert.ok((map.roadWays?.length ?? 0) > 0);
+    assert.ok(map.buildings.some((building) => building.kind === "shop"));
+    const shops = map.buildings.filter((building) => building.kind === "shop");
+    assert.ok(shops.length >= 8);
+    const fallbackNames =
+      map.id === "delhi"
+        ? ["Kirana shop", "Chai corner", "Street provisions", "Market kiosk"]
+        : ["Boulangerie", "Café de quartier", "Épicerie", "Pâtisserie"];
+    const addedShops = shops.filter((shop) =>
+      fallbackNames.includes(shop.name ?? ""),
+    );
+    for (let i = 0; i < addedShops.length; i++) {
+      const shop = addedShops[i];
+      assert.ok(
+        Math.hypot(
+          shop.x + shop.w / 2 - objective.x,
+          shop.y + shop.h / 2 - objective.y,
+        ) >= 180,
+      );
+      for (const other of addedShops.slice(i + 1))
+        assert.ok(
+          Math.hypot(
+            shop.x + shop.w / 2 - other.x - other.w / 2,
+            shop.y + shop.h / 2 - other.y - other.h / 2,
+          ) >= 180,
+        );
+    }
+    const shopLocations = shops.map(({ id, x, y }) => ({ id, x, y }));
+    ensureStreetShops(map);
+    assert.deepEqual(
+      map.buildings
+        .filter((building) => building.kind === "shop")
+        .map(({ id, x, y }) => ({ id, x, y })),
+      shopLocations,
+    );
+    assert.ok(map.policeLine.length >= 14);
+    assert.ok(map.checkpoints.length >= 7);
+    assert.ok(
+      map.policeLine.filter(
+        (point) =>
+          Math.hypot(point.x - objective.x, point.y - objective.y) <= 60,
+      ).length >= 3,
+    );
+    assert.ok(
+      new Set(
+        [...map.policeLine, ...map.checkpoints].map(
+          (point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`,
+        ),
+      ).size >= 20,
+    );
     assert.ok(map.cropRect);
+    assert.ok(isWalkable(map, objective.x, objective.y, 90));
+    assert.ok(
+      map.labels.some((label) =>
+        label.text.includes(
+          map.id === "delhi" ? "JANTAR MANTAR" : "PLACE DE LA RÉPUBLIQUE",
+        ),
+      ),
+    );
+    assert.equal(map.buildings.filter((b) => b.barricade).length, 4);
+    const barricades = map.buildings.filter((b) => b.barricade);
+    const osmOnly = {
+      ...map,
+      buildings: map.buildings.filter((b) => !b.barricade),
+    };
+    for (const barrier of barricades) {
+      assert.equal(barrier.hp, 100);
+      assert.equal(barrier.maxHp, 100);
+      assert.ok(isWalkable(map, barrier.x - 10, barrier.y + 9, 9));
+      for (let x = 4; x < barrier.w; x += 8)
+        for (const y of [2, 9, 16])
+          assert.ok(isWalkable(osmOnly, barrier.x + x, barrier.y + y, 2));
+      if (barrier !== barricades.at(-1))
+        assert.ok(
+          isWalkable(map, barrier.x + barrier.w + 15, barrier.y + 9, 9),
+        );
+    }
+    const legacyMap = structuredClone(map);
+    legacyMap.buildings = legacyMap.buildings.filter((b) => !b.barricade);
+    legacyMap.policeLine = [];
+    ensureObjectiveDefenses(legacyMap);
+    ensureObjectiveDefenses(legacyMap);
+    assert.equal(legacyMap.buildings.filter((b) => b.barricade).length, 4);
+    assert.equal(legacyMap.policeLine.length, 14);
     assert.ok(map.rallyPoints.length >= 12 && map.rallyPoints.length <= 20);
     assert.ok(
       Math.max(...map.rallyPoints.map((p) => p.x)) -
@@ -39,6 +129,7 @@ test("bundled OSM footprints and navigation anchors stay on open ground", () => 
       );
     }
     for (const building of map.buildings) {
+      if (building.barricade) continue;
       assert.ok(building.footprint && building.footprint.length >= 4);
       assert.deepEqual(building.footprint[0], building.footprint.at(-1));
       const edge = building.footprint[0];
@@ -86,6 +177,11 @@ test("bundled OSM footprints and navigation anchors stay on open ground", () => 
       ...map.truckRoutes.protester,
       ...map.truckRoutes.police,
     ];
+    assert.ok(
+      map.policeLine.some(
+        (p) => Math.hypot(p.x - objective.x, p.y - objective.y) < 180,
+      ),
+    );
     for (const p of anchors)
       assert.deepEqual(collideBuildings(map, p.x, p.y, 9), p);
     const world = createWorld(map.id, "protester", "Test", "test", 0, 0, 17);
@@ -141,6 +237,34 @@ test("bundled OSM footprints and navigation anchors stay on open ground", () => 
       );
     }
   }
+});
+
+test("only broken barricades stop colliding", () => {
+  const map: MapDef = {
+    ...MAPS.paris,
+    buildings: [
+      {
+        id: "barricade",
+        kind: "wall" as const,
+        barricade: true,
+        x: 100,
+        y: 100,
+        w: 20,
+        h: 20,
+        hp: 0,
+        maxHp: 100,
+        broken: false,
+      },
+    ],
+  };
+  assert.equal(isWalkable(map, 110, 110, 9), false);
+  map.buildings[0].broken = true;
+  assert.equal(isWalkable(map, 110, 110, 9), true);
+  assert.deepEqual(collideBuildings(map, 110, 110, 9), { x: 110, y: 110 });
+
+  map.buildings[0].barricade = false;
+  map.buildings[0].kind = "block";
+  assert.equal(isWalkable(map, 110, 110, 9), false);
 });
 
 test("polygon navigation catches thin walls without blocking collinear extensions", () => {

@@ -3,6 +3,7 @@ import {
   createWorld,
   doAction,
   feed,
+  initializeRoadsidePickups,
   issueOrder,
   spawnPlayer,
   spawnSupply,
@@ -14,9 +15,12 @@ import {
   enterBuilding,
   exitBuilding,
   interactObjective,
+  lootShop,
 } from "../game/world-rules";
 import { collideBuildings } from "../game/maps";
 import { entryPoint, type AreaId } from "../game/locations";
+import { supplyOption } from "../game/equipment";
+import { placeName } from "../game/place-names";
 import { prewarmNavigation } from "../game/navigation";
 import type { Entity, InputState, MapId, Role, World } from "../game/types";
 import {
@@ -70,6 +74,7 @@ export class GameService {
             { persistent: true },
           );
         upgradeWorldMap(w, store);
+        initializeRoadsidePickups(w);
         w.player = null;
         w.role = "watcher";
         prewarmNavigation(w.map);
@@ -83,6 +88,7 @@ export class GameService {
         return [id, w];
       }),
     ) as Record<MapId, World>;
+    this.syncMarketQuotes();
     for (const mapId of maps)
       this.eventCursors.set(mapId, store.meta(`events:${mapId}`, 0));
     for (const bet of store.openBets())
@@ -98,6 +104,20 @@ export class GameService {
   }
   get time() {
     return Math.max(...maps.map((id) => this.worlds[id].time));
+  }
+  private syncMarketQuotes() {
+    for (const world of Object.values(this.worlds)) {
+      if (world === this.worlds.delhi) continue;
+      for (const instrument of world.instruments) {
+        const shared = this.worlds.delhi.instruments.find(
+          (item) => item.id === instrument.id,
+        );
+        if (!shared) continue;
+        instrument.prev = shared.prev;
+        instrument.price = shared.price;
+        instrument.history = [...shared.history];
+      }
+    }
   }
   private entity(id: string): Entity | undefined {
     return this.worlds[this.store.profile(id).mapId].entities.find(
@@ -339,6 +359,8 @@ export class GameService {
       state.connected = false;
       state.input = { ...idle };
       state.seen = this.time;
+      const player = this.entity(id);
+      if (player) player.objectiveUntil = undefined;
       this.reconcilePoliceTasks(this.worlds[this.store.profile(id).mapId]);
     }
   }
@@ -425,17 +447,25 @@ export class GameService {
               throw new Error("Close predictions and positions before funding");
             if (
               w.entities.filter(
-                (e) => !e.remove && (e.kind === "truck" || e.kind === "crate"),
+                (e) =>
+                  !e.remove &&
+                  !e.roadsidePickup &&
+                  (e.kind === "truck" || e.kind === "crate"),
               ).length >= 20
             )
               throw new Error("Supply routes at capacity");
+            const supply = supplyOption(message.faction, message.kind);
+            if (!supply)
+              throw new Error(
+                "That supply loadout is unavailable for this faction",
+              );
             this.store.credit(
               id,
-              -20,
+              -supply.price,
               "supply funding",
               `${id}:${message.requestId}`,
             );
-            spawnSupply(w, message.faction);
+            spawnSupply(w, message.faction, supply.kind);
             this.store.setMeta(`fund:${id}`, this.time + 60);
           } else {
             if (
@@ -528,6 +558,8 @@ export class GameService {
               e.name + " collected essentials; food and water restored.",
               "good",
             );
+          else if (lootShop(w, e))
+            feed(w, e.name + " took food from a shop.", "good");
           else if (interactObjective(w, e))
             feed(
               w,
@@ -555,7 +587,10 @@ export class GameService {
           if (building?.id && enterBuilding(w, e, building.id))
             feed(
               w,
-              e.name + " entered " + (building.name ?? "the building") + ".",
+              e.name +
+                " entered " +
+                (building.name ? placeName(building.name) : "the building") +
+                ".",
               "good",
             );
           else feed(w, "Move to a marked open doorway to enter.");
@@ -604,23 +639,35 @@ export class GameService {
       this.reconcilePoliceTasks(w);
       this.settle(w);
     }
-    if (Math.floor(this.time / 5) > Math.floor((this.time - dt) / 5)) {
+    if (Math.floor(this.time / 1.5) > Math.floor((this.time - dt) / 1.5)) {
       const worlds = maps.map((id) => this.worlds[id]);
-      const tension =
-        worlds.reduce((sum, w) => sum + w.tension, 0) / worlds.length;
-      const damage = worlds.reduce((sum, w) => sum + w.damage, 0),
-        violence = worlds.reduce((sum, w) => sum + w.violenceRate, 0);
+      const average = (value: (w: World) => number) =>
+        worlds.reduce((sum, w) => sum + value(w), 0) / worlds.length;
+      const tension = average((w) => w.tension);
+      const damage = average((w) => w.damage);
+      const violence = average((w) => w.violenceRate);
       const fair: Record<string, number> = {
-        calm: 105 - tension * 0.85,
-        chaos: 15 + tension * 1.25,
-        glass: 28 + damage * 0.55,
-        media: 35 + violence * 9 + tension * 0.4,
+        calm: Math.max(8, Math.min(200, 105 - tension * 0.85)),
+        chaos: Math.max(5, Math.min(300, 15 + tension * 1.25)),
+        glass: Math.max(10, Math.min(350, 28 + damage * 0.55)),
+        media: Math.max(10, Math.min(300, 35 + violence * 9 + tension * 0.4)),
       };
-      for (const w of worlds)
-        for (const instrument of w.instruments)
-          instrument.price = Math.round(
-            Math.max(3, Math.min(400, fair[instrument.id])),
-          );
+      for (const instrument of this.worlds.delhi.instruments) {
+        instrument.prev = instrument.price;
+        instrument.price = Math.round(
+          Math.max(
+            3,
+            Math.min(
+              400,
+              instrument.price +
+                (fair[instrument.id] - instrument.price) * 0.22,
+            ),
+          ),
+        );
+        instrument.history.push(instrument.price);
+        if (instrument.history.length > 80) instrument.history.shift();
+      }
+      this.syncMarketQuotes();
     }
     for (const [id, state] of this.players)
       if (!state.connected && this.time - state.seen > 20)

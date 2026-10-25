@@ -1,5 +1,6 @@
 import type { InputState, MapDef, MapId, Role, World } from "../game/types";
 import type { AreaId } from "../game/locations";
+import type { SupplyKind } from "../game/equipment";
 
 export const PROTOCOL_VERSION = 1;
 export type Command =
@@ -30,7 +31,7 @@ export type Command =
       stake: number;
       targetId?: number;
     }
-  | { type: "fund"; faction: "protester" | "police" }
+  | { type: "fund"; faction: "protester" | "police"; kind?: SupplyKind }
   | { type: "respawn"; role: "protester" | "police" }
   | { type: "observe"; mapId: MapId }
   | { type: "ping" };
@@ -230,7 +231,12 @@ export function parseMessage(value: unknown): ClientMessage | null {
             finite(value.targetId, 1, Number.MAX_SAFE_INTEGER)));
       break;
     case "fund":
-      valid = value.faction === "police" || value.faction === "protester";
+      valid =
+        (value.faction === "police" || value.faction === "protester") &&
+        (value.kind === undefined ||
+          value.kind === "essentials" ||
+          value.kind === "gear" ||
+          value.kind === "arms");
       break;
     case "respawn":
       valid = value.role === "police" || value.role === "protester";
