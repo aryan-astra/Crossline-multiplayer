@@ -1,6 +1,6 @@
 # Networking
 
-The custom Node server owns two location simulations at 30 fixed steps/second. Browser input is sent at 20Hz and snapshots at10Hz; browsers never advance independent public worlds. One active socket per guest identity prevents duplicate bodies; use separate browser profiles/private windows for multiple players.
+The custom Node server owns two location simulations targeting 30 fixed steps/second. It runs at most one step per timer callback so slow ticks yield to network I/O rather than accumulating catch-up work. Under overload the shared simulation clock slows; the transport overload regression verifies that scheduling boundary and an HTTP response. Browser input is sent at 20Hz and snapshots target 10Hz; browsers never advance independent public worlds. One active socket per guest identity prevents duplicate bodies; use separate browser profiles/private windows for multiple players.
 
 GET /api/session creates/resumes a guest; POST changes its name. Cryptographically random tokens are stored hashed and sent in HttpOnly SameSite=Strict cookies. Origin checks protect writes/upgrades. GET /api/health and /api/leaderboards expose public data. /socket uses version1, monotonic per-connection sequence numbers and bounded request IDs. Inputs/actions are validated; stale sequences, role bypasses and overdrafts fail. Economic receipt fingerprints survive reconnect/restart and reject changed payloads under reused keys.
 

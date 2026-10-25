@@ -102,10 +102,13 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
       Object.defineProperty(globalThis, "window", originalWindow);
     else Reflect.deleteProperty(globalThis, "window");
   });
+  const joinedTicks: number[] = [];
   const connection = connectWorld({
     name: "Test",
     join: () => ({ type: "join", mapId: "delhi", role: "watcher" }),
-    onSnapshot() {},
+    onSnapshot(snapshot) {
+      joinedTicks.push(snapshot.tick);
+    },
     onNotice() {},
     onStatus() {},
   });
@@ -114,6 +117,22 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
   assert.equal(requests, 1);
   sockets[0].readyState = 1;
   sockets[0].onopen!();
+  const bootstrap = {
+    v: 1,
+    type: "snapshot",
+    tick: 10,
+    ack: 0,
+    world: { map: { id: "delhi" }, entities: [] },
+    self: { role: "watcher" },
+    predictions: [],
+    rankings: [],
+  };
+  sockets[0].onmessage!({ data: JSON.stringify(bootstrap) });
+  assert.deepEqual(joinedTicks, []);
+  sockets[0].onmessage!({
+    data: JSON.stringify({ ...bootstrap, tick: 11, ack: 1 }),
+  });
+  assert.deepEqual(joinedTicks, [11]);
   connection.send({ type: "ping" });
   assert.deepEqual(
     sockets[0].sent.map((raw) => JSON.parse(raw).seq),

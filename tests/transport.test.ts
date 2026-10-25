@@ -111,6 +111,32 @@ test("explicit HTTPS proxy origin accepts the public site, sets secure cookies a
   }
 });
 
+test("overloaded simulation yields to network I/O instead of chaining catch-up steps", async () => {
+  const game = await setup(true);
+  let calls = 0,
+    maxCalls = 0;
+  game.service.advance = () => {
+    calls++;
+    maxCalls = Math.max(maxCalls, calls);
+    if (calls === 1)
+      setImmediate(() => {
+        calls = 0;
+      });
+    const end = performance.now() + 45;
+    while (performance.now() < end) {
+      /* Deliberate workload beyond the 33ms step budget. */
+    }
+  };
+  try {
+    await delay(250);
+    const response = await fetch(`${game.origin}/api/health`);
+    assert.equal(response.status, 200);
+    assert.equal(maxCalls, 1);
+  } finally {
+    await game.close();
+  }
+});
+
 test("two authenticated WebSocket sessions share server movement, bot state and objective; replay is rejected", async () => {
   const game = await setup();
   try {

@@ -210,7 +210,11 @@ export function connectWorld(options: {
           options.onNotice("Server sent an unsupported message.");
           return;
         }
-        if (message.type === "snapshot" && "map" in message.world)
+        if (
+          message.type === "snapshot" &&
+          message.ack > 0 &&
+          "map" in message.world
+        )
           options.onSnapshot(message as Snapshot);
         else if (message.type === "ack" || message.type === "error") {
           const transaction = message.requestId

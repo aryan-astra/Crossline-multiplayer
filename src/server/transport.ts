@@ -7,7 +7,7 @@ import {
 import { performance } from "node:perf_hooks";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import { advance, STEP } from "../game/loop";
+import { STEP } from "../game/loop";
 import { parseMessage, type ServerMessage } from "../network/protocol";
 import { GameService } from "./service";
 import type { Store } from "./store";
@@ -365,15 +365,11 @@ export function createGameServer({
       snapshot(profile.id, connection);
     });
   });
-  let last = performance.now(),
-    accumulator = 0;
   const simulation = tick
     ? setInterval(() => {
-        const now = performance.now();
         try {
-          accumulator = advance(accumulator, (now - last) / 1000, () =>
-            service.advance(STEP),
-          );
+          // Under load, slow the shared clock instead of starving network I/O with catch-up ticks.
+          service.advance(STEP);
         } catch (error) {
           console.error("Authoritative simulation stopped", error);
           clearInterval(simulation!);
@@ -381,7 +377,6 @@ export function createGameServer({
           for (const connection of clients.values())
             connection.socket.close(1011, "Simulation unavailable");
         }
-        last = now;
       }, 1000 / 30)
     : undefined;
   const updates = setInterval(() => {
