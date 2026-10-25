@@ -512,6 +512,13 @@
   .setup-content {
     padding: var(--space-m);
   }
+  .setup-choice,
+  .role-options .setup-choice {
+    padding: var(--space-xs);
+  }
+  .setup-choice small {
+    margin-top: 4px;
+  }
   .setup-progress {
     padding: var(--space-m) var(--space-m) 0;
   }
