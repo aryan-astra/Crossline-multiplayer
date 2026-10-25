@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import MarketDesk from "./MarketDesk";
+import TouchJoystick from "./TouchJoystick";
 import "@/app/game.css";
 import { buildGround, drawFrame, drawMinimap } from "@/game/render";
 import {
@@ -36,7 +37,7 @@ const help: Record<Role, string> = {
   watcher:
     "WASD / drag pan · Wheel / pinch zoom · Select a person to inspect or follow",
 };
-type Panel = "settings" | "guide" | "rankings" | null;
+type Panel = "menu" | "settings" | "guide" | "rankings" | null;
 
 export default function GameScreen({
   mapId,
@@ -89,11 +90,7 @@ export default function GameScreen({
     "overview",
   );
   const [running, setRunning] = useState(false);
-  const [hudCollapsed, setHudCollapsed] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia("(max-width: 600px)").matches,
-  );
+  const [hudCollapsed, setHudCollapsed] = useState(true);
   const [marketOpen, setMarketOpen] = useState(false);
 
   const select = (id: number | null) => {
@@ -614,7 +611,7 @@ export default function GameScreen({
         }
       />
       <header className="game-top">
-        <div>
+        <div className="status-capsule">
           <b className="game-brand">
             <Image
               src="/brand/crossline-mark.svg"
@@ -622,43 +619,52 @@ export default function GameScreen({
               height={24}
               alt=""
             />{" "}
-            CROSSLINE
+            <span>
+              {w
+                ? w.map.id === "paris"
+                  ? "Paris"
+                  : "New Delhi"
+                : "Joining city"}
+            </span>
           </b>
           <span>
-            {w?.map.name ?? "Entering public world"} /{" "}
             {actualRole === "watcher" ? "SPECTATOR" : actualRole.toUpperCase()}
+            {p && ` · HP ${Math.round(p.hp)}`}
+          </span>
+          <small role="status" className="connection-status">
+            {status} · {snapshot?.online ?? 0} online
+          </small>
+          <span
+            className="header-wallet"
+            aria-label="Available virtual credits"
+          >
+            {symbol}
+            {snapshot?.self.credits ?? 0} credits
           </span>
         </div>
-        <span role="status">
-          {status} · {snapshot?.online ?? 0} online
-        </span>
-        <span className="header-wallet" aria-label="Available virtual credits">
-          {symbol}
-          {snapshot?.self.credits ?? 0} credits
-        </span>
-        <button
-          aria-expanded={!hudCollapsed}
-          aria-controls="world-hud"
-          onClick={() => setHudCollapsed(!hudCollapsed)}
-        >
-          {hudCollapsed ? "Show HUD" : "Hide HUD"}
-        </button>
-        {actualRole === "watcher" && (
+        <nav className="game-tools" aria-label="Game tools">
           <button
-            ref={marketButton}
-            disabled={!online}
-            aria-expanded={marketOpen}
-            onClick={() => {
-              setMarketOpen(!marketOpen);
-              setHudCollapsed(true);
-            }}
+            aria-expanded={!hudCollapsed}
+            aria-controls="world-hud"
+            onClick={() => setHudCollapsed(!hudCollapsed)}
           >
-            Markets &amp; supplies
+            {hudCollapsed ? "Inspect" : "Close inspector"}
           </button>
-        )}
-        <button onClick={() => togglePanel("guide")}>How to play</button>
-        <button onClick={() => togglePanel("settings")}>Settings</button>
-        <button onClick={onExit}>Leave</button>
+          {actualRole === "watcher" && (
+            <button
+              ref={marketButton}
+              disabled={!online}
+              aria-expanded={marketOpen}
+              onClick={() => {
+                setMarketOpen(!marketOpen);
+                setHudCollapsed(true);
+              }}
+            >
+              Exchange
+            </button>
+          )}
+          <button onClick={() => togglePanel("menu")}>Menu</button>
+        </nav>
       </header>
       {!marketOpen && (notice || status !== "Connected") && (
         <div className="game-toast" role="status">
@@ -936,14 +942,6 @@ export default function GameScreen({
             open
           </span>
           <br />
-          <a
-            className="map-credit"
-            href="https://www.openstreetmap.org/copyright"
-            target="_blank"
-            rel="noreferrer"
-          >
-            © OpenStreetMap contributors
-          </a>
         </p>
         {actualRole !== "watcher" && (
           <div className="action-buttons">
@@ -1007,35 +1005,15 @@ export default function GameScreen({
           }
           hidden={marketOpen}
         >
-          {(
-            [
-              ["up", "↑"],
-              ["left", "←"],
-              ["down", "↓"],
-              ["right", "→"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              aria-label={`Move ${key}`}
-              disabled={disabled || deathActive}
-              onPointerDown={(event) => {
-                event.currentTarget.setPointerCapture(event.pointerId);
-                input.current[key] = true;
-              }}
-              onPointerUp={() => {
-                input.current[key] = false;
-              }}
-              onPointerCancel={() => {
-                input.current[key] = false;
-              }}
-              onLostPointerCapture={() => {
-                input.current[key] = false;
-              }}
-            >
-              {label}
-            </button>
-          ))}
+          <TouchJoystick
+            disabled={disabled || deathActive}
+            camera={actualRole === "watcher"}
+            onMove={({ up, down, left, right }) => {
+              Object.assign(input.current, { up, down, left, right });
+              follow.current = false;
+              setFollowing(false);
+            }}
+          />
           {actualRole !== "watcher" && (
             <button
               disabled={disabled || deathActive}
@@ -1076,6 +1054,14 @@ export default function GameScreen({
           </div>
         </section>
       )}
+      <a
+        className="map-credit"
+        href="https://www.openstreetmap.org/copyright"
+        target="_blank"
+        rel="noreferrer"
+      >
+        © OpenStreetMap contributors
+      </a>
       <dialog
         ref={modal}
         className="game-modal"
@@ -1086,15 +1072,27 @@ export default function GameScreen({
         }}
       >
         <h1 id="game-panel-title">
-          {panel === "settings"
-            ? "Settings"
-            : panel === "guide"
-              ? "Field guide"
-              : "Public rankings"}
+          {panel === "menu"
+            ? "Paused controls"
+            : panel === "settings"
+              ? "Settings"
+              : panel === "guide"
+                ? "Field guide"
+                : "Public rankings"}
         </h1>
         <p className="muted">
           Your input is paused. The public world continues.
         </p>
+        {panel === "menu" && (
+          <div className="menu-actions">
+            <button onClick={() => togglePanel("guide")}>How to play</button>
+            <button onClick={() => togglePanel("settings")}>Settings</button>
+            <button onClick={() => togglePanel("rankings")}>
+              Career &amp; rankings
+            </button>
+            <button onClick={onExit}>Leave city</button>
+          </div>
+        )}
         {panel === "settings" && (
           <>
             <label className="inspect-label">
