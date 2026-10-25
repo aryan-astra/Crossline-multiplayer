@@ -17,6 +17,7 @@ import { compactSnapshot, makeSnapshotDelta } from "../network/delta";
 import { GameService } from "./service";
 import type { Store } from "./store";
 import type { MapId } from "../game/types";
+import { isLanAddress, onlineOrigin } from "./hosting";
 
 const COOKIE = "crossline_session";
 const MAX_QUEUE = 512 * 1024;
@@ -36,13 +37,13 @@ type Connection = {
   lastSnapshot?: WireSnapshot;
 };
 
-function token(request: IncomingMessage): string {
+function token(request: IncomingMessage, cookieName = COOKIE): string {
   return (
     request.headers.cookie
       ?.split(";")
       .map((part) => part.trim())
-      .find((part) => part.startsWith(`${COOKIE}=`))
-      ?.slice(COOKIE.length + 1) ?? ""
+      .find((part) => part.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) ?? ""
   );
 }
 
@@ -101,12 +102,22 @@ export function createGameServer({
   handler,
   tick = true,
   publicOrigin,
+  mode = publicOrigin ? "online" : "lan",
+  onlineUrl,
 }: {
   store: Store;
   handler?: RequestListener;
   tick?: boolean;
   publicOrigin?: string;
+  mode?: "lan" | "online";
+  onlineUrl?: string;
 }) {
+  if (mode === "lan" && publicOrigin)
+    throw new Error(
+      "LAN mode cannot use PUBLIC_ORIGIN. Start online mode for public hosting.",
+    );
+  const publicGameUrl = onlineOrigin(onlineUrl);
+  const cookieName = mode === "online" ? "crossline_online_session" : COOKIE;
   if (publicOrigin) {
     const url = new URL(publicOrigin);
     if (
@@ -148,6 +159,16 @@ export function createGameServer({
   const server = createServer((request, response) => {
     void (async () => {
       const path = request.url?.split("?")[0];
+      if (path === "/api/connection" && request.method === "GET")
+        return respond(response, 200, { mode, onlineUrl: publicGameUrl });
+      if (
+        mode === "lan" &&
+        path?.startsWith("/api/") &&
+        !isLanAddress(request.socket.remoteAddress ?? "")
+      )
+        return respond(response, 403, {
+          error: "This room is for the local network.",
+        });
       if (path === "/api/health" && request.method === "GET")
         return respond(response, closing ? 503 : 200, {
           ok: !closing,
@@ -168,7 +189,7 @@ export function createGameServer({
         return respond(response, 405, { error: "Method not allowed" });
       if (request.method === "POST" && !sameOrigin(request, publicOrigin))
         return respond(response, 403, { error: "Origin rejected" });
-      let profile = store.identify(token(request));
+      let profile = store.identify(token(request, cookieName));
       const name =
         request.method === "POST" ? await readName(request) : "Guest";
       if (!profile) {
@@ -181,7 +202,7 @@ export function createGameServer({
             : "";
         response.setHeader(
           "Set-Cookie",
-          `${COOKIE}=${guest.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure}`,
+          `${cookieName}=${guest.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure}`,
         );
       } else if (request.method === "POST")
         profile = store.rename(profile.id, name);
@@ -254,10 +275,12 @@ export function createGameServer({
       return;
     }
     if (closing) return reject(socket, 503, "Unavailable");
+    if (mode === "lan" && !isLanAddress(request.socket.remoteAddress ?? ""))
+      return reject(socket, 403, "Local Network Only");
     if (!sameOrigin(request, publicOrigin))
       return reject(socket, 403, "Forbidden");
     if (!permitted(request)) return reject(socket, 429, "Too Many Requests");
-    const profile = store.identify(token(request));
+    const profile = store.identify(token(request, cookieName));
     if (!profile) return reject(socket, 401, "Unauthorized");
     if (sockets.clients.size >= 128)
       return reject(socket, 503, "Capacity Reached");

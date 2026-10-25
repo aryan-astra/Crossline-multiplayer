@@ -14,11 +14,31 @@ async function main() {
     throw new Error("Invalid PORT");
   const app = next({ dev, hostname, port });
   await app.prepare();
-  const store = new Store(process.env.DATA_FILE ?? "data/crossline.sqlite");
+  const publicOrigin =
+    process.env.PUBLIC_ORIGIN ?? process.env.RENDER_EXTERNAL_URL;
+  if (
+    process.env.PLAY_MODE &&
+    !["lan", "online"].includes(process.env.PLAY_MODE)
+  )
+    throw new Error("PLAY_MODE must be lan or online");
+  const mode =
+    process.env.PLAY_MODE === "lan"
+      ? "lan"
+      : process.env.PLAY_MODE === "online" || publicOrigin
+        ? "online"
+        : "lan";
+  const store = new Store(
+    process.env.DATA_FILE ??
+      (mode === "online"
+        ? "data/crossline-online.sqlite"
+        : "data/crossline.sqlite"),
+  );
   const game = createGameServer({
     store,
     handler: app.getRequestHandler(),
-    publicOrigin: process.env.PUBLIC_ORIGIN ?? process.env.RENDER_EXTERNAL_URL,
+    publicOrigin,
+    mode,
+    onlineUrl: process.env.ONLINE_URL,
   });
   game.server.on("upgrade", (request, socket, head) => {
     if (request.url?.split("?")[0] !== "/socket")

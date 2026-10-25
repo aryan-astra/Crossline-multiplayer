@@ -1,5 +1,13 @@
 # Networking
 
+## LAN and online authorities
+
+`npm run start:lan` starts private-network play using `data/crossline.sqlite` and the existing guest cookie. `PUBLIC_ORIGIN=https://your-host npm run start:online` (set the variable separately in PowerShell) uses `data/crossline-online.sqlite` and a distinct `crossline_online_session` cookie. Set different ports when running both on one host. `/api/connection` reports the actual mode. `ONLINE_URL` optionally links the LAN title screen to a configured public authority; an unconfigured Online button stays disabled. These are separate server processes/stores, not browser-owned simulations or arbitrary room codes.
+
+LAN checks the actual TCP peer for private/link-local/loopback addresses and ignores forwarded client-address headers. This is a network convenience boundary, not authentication against a malicious LAN peer. A reverse proxy or tunnel can make public visitors appear local: never publish the LAN process that way. Use online mode with HTTPS/WSS and a configured origin. Same-site cookies and all existing command validation still apply. Disconnect immediately cancels Book participation.
+
+Visual prediction uses the server's movement/collision helper with at most 150 ms lead. Authoritative snapshots reconcile position; clients cannot predict transactions or capture/combat outcomes. This is not full input replay reconciliation.
+
 The custom Node server owns two location simulations targeting 30 fixed steps/second. It runs at most one step per timer callback so slow ticks yield to network I/O rather than accumulating catch-up work. Under overload the shared simulation clock slows; the transport overload regression verifies that scheduling boundary and an HTTP response. Changed browser input is capped at 20Hz; unchanged input is repeated every 250ms to keep the server-side input lease alive, which expires after half a simulation second. Snapshots target 10Hz; browsers never advance independent public worlds. One active socket per guest identity prevents duplicate bodies; use separate browser profiles/private windows for multiple players.
 
 GET /api/session creates/resumes a guest; POST changes its name. Cryptographically random tokens are stored hashed and sent in HttpOnly SameSite=Strict cookies. Origin checks protect writes/upgrades. GET /api/health and /api/leaderboards expose public data. /socket uses version1, monotonic per-connection sequence numbers and bounded request IDs. Inputs/actions are validated; stale sequences, role bypasses and overdrafts fail. Economic receipt fingerprints survive reconnect/restart and reject changed payloads under reused keys.

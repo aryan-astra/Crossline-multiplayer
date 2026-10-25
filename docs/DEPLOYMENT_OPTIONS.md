@@ -2,6 +2,8 @@
 
 ## Current $0 setup: run the Node server on the LAN
 
+Use `npm run start:lan` for private-network play. For public hosting use online mode: set `PUBLIC_ORIGIN` to the HTTPS origin and run `npm run start:online`, with its separate database file. On Render, `RENDER_EXTERNAL_URL` already selects online mode for the existing `npm start` configuration. Do not put a public tunnel in front of LAN mode. `ONLINE_URL` can link a LAN title screen to an independently deployed public game. No public server was provisioned in this pass.
+
 The existing Node server is the no-extra-hosting-cost option when the user has a machine to run it. Set `HOST=0.0.0.0`, start the app, and join from other devices on the LAN using the host's address. It remains available only while that machine and network are up. Public exposure adds TLS, firewall, backup and availability work.
 
 For an eventual cloud-native deployment, treat a Cloudflare Durable Objects port as a bounded-budget target, not a drop-in or unlimited-free deployment. It needs Worker/DO transport and storage changes, durable state recovery, and measured limits for active time, sockets and requests. Current Cloudflare free allowances can be exceeded by continuous location ticks or input traffic; see [deployment research](DEPLOYMENT_RESEARCH.md).
