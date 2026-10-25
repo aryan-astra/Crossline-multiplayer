@@ -4,7 +4,7 @@ Persistent multiplayer browser crowd simulation integrating STREETS / Crowd Comm
 
 ## Run
 
-Use Node.js **24.20.x** and npm. No paid service, external database or API key is required.
+Use Node.js **24.x, at least 24.20** and npm. No paid service, external database or API key is required.
 
 ```sh
 npm ci --ignore-scripts
@@ -34,7 +34,7 @@ Military appointments are temporary and earned through police performance. Death
 
 Original prototypes remain preserved locally and ignored. Source A supplied maps, rendering and rules; Source B supplied formation and rally algorithms. Menu images remain separate from collision geometry.
 
-The playable street layouts and building footprints now use OpenStreetMap extracts for Jantar Mantar and Place de la République. Facades, interiors and events are fictional; see [map sources and ODbL attribution](docs/MAP_SOURCES.md). Spectators can open **Markets & supplies** directly from the header to see price histories, holdings, virtual trades and supply funding. Settings includes opt-in directional event sound.
+The 4400 × 3000 street layouts and building footprints use OpenStreetMap extracts for Jantar Mantar and Place de la République. Ordinary buildings have marked entrances and generated interiors; monuments and walls do not. Facades, interiors and events are fictional; see [map sources and ODbL attribution](docs/MAP_SOURCES.md). Spectators can open **Exchange** directly from the header to see price histories, holdings, virtual trades and supply funding. Settings includes opt-in directional event sound.
 
 The play view starts with a compact city/health/wallet capsule, an optional inspector and a small action dock. Overview, People and News open on demand. Touch devices get a circular movement joystick and thumb actions; desktop windows never gain a joystick just because they are narrow. Spectators get a dedicated **Exchange** with live simulated quotes, portfolio values, predictions and supply routes. Career & rankings shows guest progression alongside public scores. Balances and outcomes come from server snapshots. The server targets30 fixed steps/second and yields after each step; under overload the shared simulation slows. WebSocket compression is disabled after a browser input-backlog regression; static maps are still sent once per connection/location. See [networking](docs/NETWORKING.md) for the bandwidth tradeoff.
 

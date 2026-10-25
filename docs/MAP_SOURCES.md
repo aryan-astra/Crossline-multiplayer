@@ -1,12 +1,12 @@
 # OpenStreetMap map geometry
 
-The bundled geometry in `src/game/geography/` was downloaded from the official OpenStreetMap API on 2026-10-23 and is derived from OpenStreetMap contributors' database. It contains building ways as closed polygon rings and highway ways as tagged polylines. Coordinates are transformed to the existing 2200 × 1500 game frame with a local equirectangular projection, north up, uniform scale; each file records its crop bounds, projection center, and meters per game unit. OSM way IDs and tags are retained.
+The bundled geometry in `src/game/geography/` was downloaded from the official OpenStreetMap API on 2026-10-25 and is derived from OpenStreetMap contributors' database. It contains building ways as closed polygon rings and highway ways as tagged polylines. Coordinates are transformed to a 4400 × 3000 source frame with a local equirectangular projection, north up, uniform scale; each file records its crop bounds, projection center, and meters per game unit. OSM way IDs and tags are retained.
 
-The Paris extract was downloaded with `https://api.openstreetmap.org/api/0.6/map?bbox=2.359,48.865,2.368,48.870`; the bundled crop is `west=2.360, south=48.8657, east=2.367, north=48.8693` (198 building footprints, 490 highway ways). The crop is centered on Place de la République (48.8675, 2.3638).
+The Paris extract uses `https://api.openstreetmap.org/api/0.6/map?bbox=2.3565,48.8639,2.3705,48.8711`; it contains 1,019 building footprints and 1,822 highway ways. The projection is centered at (48.8675, 2.3635), near Place de la République.
 
-The Delhi extract was downloaded with `https://api.openstreetmap.org/api/0.6/map?bbox=77.213,28.624,77.221,28.630`; the bundled crop uses those same bounds (102 building footprints, 212 highway ways), centered on Jantar Mantar (28.6271, 77.2166).
+The Delhi extract uses `https://api.openstreetmap.org/api/0.6/map?bbox=77.209,28.621,77.225,28.633`; it contains 470 building footprints and 986 highway ways. The projection is centered at (28.627, 77.217), near Jantar Mantar.
 
-Buildings and roads are included when the arithmetic mean of their OSM way nodes falls inside the crop. The source JSON keeps their full way geometry and tags; the runtime map clips building rings and selected street lines to the crop bounds, and carries only the OSM way ID, building name, street name/class, and geometry. The rendered map includes `primary`, `secondary`, `tertiary`, `residential`, `living_street`, `pedestrian`, and `unclassified` ways. It uses closed `building=*` ways and does not include multipolygon building relations.
+The importer in `scripts/import_osm.py` includes a way when any node falls inside its crop, retaining the full way geometry and tags in source JSON. Runtime map construction clips building rings and selected street lines to the crop bounds, and carries only the OSM way ID, building name, street name/class, and geometry. The rendered map includes `primary`, `secondary`, `tertiary`, `residential`, `living_street`, `pedestrian`, and `unclassified` ways. It uses closed `building=*` ways and does not include multipolygon building relations.
 
 ## Attribution and license
 

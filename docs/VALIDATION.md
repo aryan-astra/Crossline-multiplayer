@@ -1,5 +1,21 @@
 # Executed validation
 
+## 25 October 2026 — expanded districts, distributed bots and snapshot deltas
+
+`npm run validate` passed formatting, lint, TypeScript, **113 tests with no failures or skips**, and the production build. The two seeded 300-second headless rounds matched. Delivery tests reached both faction depots on both maps without crossing solids. Tests also cover migration of active/offline saved characters without changing balances, human-initiated objectives, distributed bot routes, idle-aim throws, map bounds, building entry/exit, delta reconstruction, optional-field removal, event resets, legacy-client compatibility and transport security.
+
+The maps now use 4400 × 3000 frames and expanded OSM extracts at unchanged geographic scale. The Python importer's `--self-test` passed. Original prototype folders and runtime database files were preserved. Interior rooms, decorative greenery and facade colors are generated gameplay details, not surveyed OSM interiors.
+
+In the in-app browser, a held ArrowRight input was sent at 102281.597975 and the first authoritative changed player position arrived at 102281.687528: **89.55ms**. Two independent cookie identities then received identical player x coordinates across five matching ticks during keyboard movement. Sample deltas were roughly 5.8–12.8KB, rather than the previous approximately 105KB actor snapshots; event-heavy updates vary. This is local evidence, not internet latency or public capacity certification.
+
+A fresh protester joined with three stones. Pressing Q produced a server-owned traveling projectile and reduced ammunition to two. An existing empty loadout displayed the server's reload message. Walking to a marked Delhi doorway changed the prompt to Enter, B opened its generated interior, and B returned through the same door. The spectator funded a crowd delivery: credits changed 46→26 once and the desk showed its truck en route. Actual arrival is covered by headless tests; it was not continuously watched in this browser pass.
+
+At 390 × 844 with coarse-pointer emulation, document dimensions matched the viewport. The circular joystick appeared only with touch emulation; dragging sent rightward inputs and then released all directions. The inspector/minimap is on the left; the translucent leaderboard is on the right. No warning/error console entries were reported in the three tested game tabs. Screenshots are saved locally under ignored `artifacts/`.
+
+The final 900-tick-per-scenario headless benchmark measured p95 **4.243ms** for 1 human/20 bots, **9.379ms** for 2/50, **20.717ms** for 5/100, and **13.261ms** for 10/adaptive population. Maximum samples reached 75.9–110.9ms. It excludes network, SQLite and rendering, and memory deltas include GC noise. A read-only sample of the persisted Delhi workload after bounding local route search averaged about 2–3ms per simulation update; this is a short diagnostic, not an endurance result. Cached full-map ground canvases require about 52.8MB of raw RGBA storage per city before browser overhead.
+
+Physical Android hardware, public internet load, long-duration economy balance and a repeated 30-minute endurance run were not checked in this pass. Free-tier provider quotas are documented in deployment research; no cloud deployment or unlimited-player claim is made.
+
 ## 25 October 2026 — input backlog, minimal HUD and touch joystick
 
 `npm run validate` passed formatting, lint, TypeScript, **99 tests (zero failures or skips)** and the production build. Two deterministic300-second headless rounds with62 bots reproduced matching results. New coverage checks peaceful travel through the existing rally anchors, objective holding/contribution, corrected blocked rally targets, safe cached-route reuse, joystick dead-zone/directional clamping, disabled compression negotiation and coalescing of unfinished snapshot writes. The30-minute endurance run below predates these AI/navigation changes and was not repeated for this pass.

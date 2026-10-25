@@ -4,7 +4,7 @@ This change implements shared local server simulation, persisted guests/ledger/c
 
 Next priorities:
 
-1. Profile remaining simulation spikes and entity traffic under realistic load. One-time map transfer, WebSocket compression, graph warm-up and bounded narrow-passage steering are implemented; entity deltas, richer spatial queries and measured admission budgets remain. Saved-world p95 still exceeds the 33 ms tick budget in the local sample.
+1. Measure sustained multi-client admission budgets and remaining spikes. One-time map transfer, entity deltas, indexed collision queries, graph warm-up and bounded local route search are implemented. WebSocket compression stays disabled after a reproduced input backlog. Fresh-world benchmarks alone are insufficient: include persisted-world workloads and browser input latency.
 2. Low-end Android endurance, accessibility/touch tuning and balance from observed play. Current OSM scenes escalate rapidly; conduct sustained faction/market balance sessions before a public release.
 3. Public account recovery, anti-Sybil/collusion controls, backups and hard-crash drills.
 4. Cleared-provenance art/animation/audio within measured budgets. Existing generated promotional art is retained; no new generation was required.

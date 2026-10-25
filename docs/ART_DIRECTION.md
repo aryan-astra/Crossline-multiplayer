@@ -16,6 +16,8 @@ Charcoal `#101214`, panel `#171a1d`, paper white `#f4efe5` and one amber accent 
 
 The artwork is confined to the homepage hero and selection cards. It is not used as interactive map geometry. Next Image generates appropriate delivery sizes and lazy-loads selection artwork; the hero is prioritized. Original generated PNG files retain their metadata.
 
+The public Jantar Mantar site (`https://mantarjantar.com/`) was reviewed as a visual reference for colorful shops, roads that lead the eye toward a clear objective, translucent UI panels and leader presentation. These are design observations only; no site assets, text or branding were copied. The map geometry and attribution remain separately governed by the OSM terms above.
+
 ## Saved assets and generation prompts
 
 Built-in image generation was used. No paid API keys or external image service integration were added. All seven outputs were visually inspected, then copied to `public/img/` without changing the generated images. The original generated outputs remain in the Codex image directory.
