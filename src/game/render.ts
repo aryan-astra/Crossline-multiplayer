@@ -1,4 +1,5 @@
 import type { World, Entity, MapDef, Building } from "./types";
+import { isWalkable } from "./maps";
 
 const SKINS = ["#e8b98d", "#c98e5f", "#a5673f", "#8a5232", "#f0c9a0"];
 const PROTEST_CLOTH = [
@@ -25,15 +26,37 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
   c.height = map.h;
   const g = c.getContext("2d")!;
   const ground = g.createLinearGradient(0, 0, 0, map.h);
-  ground.addColorStop(0, map.ambience === "delhi" ? "#c8b58e" : "#b3afa5");
-  ground.addColorStop(1, map.ambience === "delhi" ? "#bba47d" : "#99968e");
+  ground.addColorStop(0, map.ambience === "delhi" ? "#b4c0bd" : "#c1c8c5");
+  ground.addColorStop(1, map.ambience === "delhi" ? "#9daead" : "#abb7b8");
   g.fillStyle = ground;
   g.fillRect(0, 0, map.w, map.h);
+  g.strokeStyle = "rgba(53,72,74,0.075)";
+  g.lineWidth = 1;
+  for (let y = 32; y < map.h; y += 32) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(map.w, y);
+    g.stroke();
+  }
+  for (let x = 0; x < map.w; x += 64) {
+    g.beginPath();
+    for (let y = (Math.floor(x / 64) % 2) * 16; y < map.h; y += 32) {
+      g.moveTo(x, y);
+      g.lineTo(x, y + 32);
+    }
+    g.stroke();
+  }
+  for (const lawn of map.lawns) {
+    g.fillStyle = "#91a68e";
+    g.fillRect(lawn.x, lawn.y, lawn.w, lawn.h);
+    g.fillStyle = "rgba(221,226,196,0.22)";
+    g.fillRect(lawn.x + 6, lawn.y + 6, Math.max(0, lawn.w - 12), 2);
+  }
   // roads
   for (const r of map.roads) {
-    g.fillStyle = map.ambience === "delhi" ? "#5b5750" : "#4a4d52";
+    g.fillStyle = "#57656a";
     g.fillRect(r.x, r.y, r.w, r.h);
-    g.strokeStyle = "rgba(255,255,255,0.35)";
+    g.strokeStyle = "rgba(214,222,211,0.35)";
     g.lineWidth = 2;
     g.setLineDash([18, 22]);
     g.beginPath();
@@ -61,25 +84,31 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
               : 5;
     g.lineCap = "round";
     g.lineJoin = "round";
-    g.strokeStyle = "#4d4b49";
+    g.strokeStyle = "#899795";
+    g.lineWidth = width + 10;
+    g.beginPath();
+    g.moveTo(road.line[0].x, road.line[0].y);
+    for (const p of road.line.slice(1)) g.lineTo(p.x, p.y);
+    g.stroke();
+    g.strokeStyle = "#58676c";
     g.lineWidth = width;
     g.beginPath();
     g.moveTo(road.line[0].x, road.line[0].y);
     for (const p of road.line.slice(1)) g.lineTo(p.x, p.y);
     g.stroke();
     if (width >= 22) {
-      g.strokeStyle = "rgba(235,224,193,0.48)";
+      g.strokeStyle = "rgba(215,221,206,0.55)";
       g.lineWidth = 2;
       g.setLineDash([14, 20]);
       g.stroke();
       g.setLineDash([]);
     }
   }
+  drawStreetGreenery(g, map);
   // labels
   for (const l of map.labels) {
     g.font = `700 ${l.size ?? 14}px 'Barlow', sans-serif`;
-    g.fillStyle =
-      map.ambience === "delhi" ? "rgba(90,65,30,0.5)" : "rgba(255,255,255,0.4)";
+    g.fillStyle = "rgba(40,59,64,0.56)";
     g.textAlign = "center";
     g.save();
     if (l.text === "SANSAD MARG") {
@@ -118,13 +147,63 @@ export function buildGround(map: MapDef): HTMLCanvasElement {
   return c;
 }
 
+function drawStreetGreenery(g: CanvasRenderingContext2D, map: MapDef) {
+  for (const way of map.roadWays ?? []) {
+    if (way.line.length < 2) continue;
+    const halfWidth =
+      way.highway === "primary" || way.highway === "secondary"
+        ? 30
+        : way.highway === "tertiary" || way.highway === "trunk"
+          ? 22
+          : way.highway === "residential" || way.highway === "unclassified"
+            ? 14
+            : way.highway === "service"
+              ? 9
+              : 5;
+    let distance = 0;
+    let next = 190 + ((way.id.length * 37) % 90);
+    for (let i = 1; i < way.line.length; i++) {
+      const a = way.line[i - 1];
+      const b = way.line[i];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const length = Math.hypot(dx, dy);
+      if (!length) continue;
+      while (distance + length >= next) {
+        const t = (next - distance) / length;
+        const side = ((Math.floor(next / 80) + way.id.length) % 2) * 2 - 1;
+        const x = a.x + dx * t - (dy / length) * side * (halfWidth + 26);
+        const y = a.y + dy * t + (dx / length) * side * (halfWidth + 26);
+        if (isWalkable(map, x, y, 12)) {
+          g.fillStyle = "rgba(43,66,53,0.14)";
+          g.beginPath();
+          g.ellipse(x + 3, y + 3, 13, 8, 0, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = "#7f9a83";
+          g.beginPath();
+          g.arc(x - 4, y, 5, 0, Math.PI * 2);
+          g.arc(x + 3, y - 2, 6, 0, Math.PI * 2);
+          g.arc(x + 8, y + 2, 4, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = "rgba(219,225,193,0.42)";
+          g.fillRect(x - 2, y - 3, 3, 2);
+        }
+        next += 190 + ((Math.floor(next) + way.id.length * 13) % 90);
+      }
+      distance += length;
+    }
+  }
+}
+
 /* ------------ buildings & monuments ------------ */
 function drawBuilding(
   g: CanvasRenderingContext2D,
   b: Building,
   map: MapDef,
   time: number,
+  player?: Entity | null,
 ) {
+  const palette = buildingPalette(b, map);
   if (b.footprint) {
     const height = b.kind === "shop" ? 20 : map.ambience === "paris" ? 42 : 32;
     const path = (dy = 0, inset = 0) => {
@@ -144,10 +223,10 @@ function drawBuilding(
     g.fillStyle = "rgba(12,18,24,0.25)";
     path(height * 0.45 + 5);
     g.fill();
-    g.fillStyle = b.color ?? (map.ambience === "paris" ? "#bcae98" : "#b89270");
+    g.fillStyle = palette.facade;
     path();
     g.fill();
-    g.fillStyle = b.roof ?? (map.ambience === "paris" ? "#6d7480" : "#a78c69");
+    g.fillStyle = palette.roof;
     path(-height, 0.08);
     g.fill();
     if (b.kind === "monument") {
@@ -158,14 +237,7 @@ function drawBuilding(
       drawMonument(g, b, time);
       g.restore();
     }
-    if (b.entrance) {
-      g.fillStyle = "#202a2d";
-      g.fillRect(b.entrance.x - 7, b.entrance.y - 9, 14, 12);
-      g.strokeStyle = "#dbcf9a";
-      g.lineWidth = 2;
-      g.strokeRect(b.entrance.x - 7, b.entrance.y - 9, 14, 12);
-      label(g, b.entrance.x, b.entrance.y + 18, "ENTER", "#e4dfce");
-    }
+    drawEntrance(g, b, player);
     if (b.name && b.w > 70 && b.h > 35) {
       g.font = "600 10px 'Barlow', sans-serif";
       g.fillStyle = "rgba(35,32,28,0.7)";
@@ -199,7 +271,7 @@ function drawBuilding(
   g.lineTo(b.x + height * 0.65, b.y + b.h + height * 0.35);
   g.closePath();
   g.fill();
-  g.fillStyle = b.color ?? (map.ambience === "paris" ? "#c9bda7" : "#b89270");
+  g.fillStyle = palette.facade;
   g.fillRect(b.x, b.y + b.h - height, b.w, height);
   g.fillStyle = "rgba(36,31,27,0.22)";
   g.fillRect(b.x + b.w - 6, b.y - height, 6, b.h + height);
@@ -220,14 +292,55 @@ function drawBuilding(
   g.translate(0, -height);
   drawRoof(g, b, map, time);
   g.restore();
-  if (b.entrance) {
-    g.fillStyle = "#202a2d";
-    g.fillRect(b.entrance.x - 9, b.entrance.y - 17, 18, 18);
-    g.strokeStyle = "#dbcf9a";
-    g.lineWidth = 2;
-    g.strokeRect(b.entrance.x - 9, b.entrance.y - 17, 18, 18);
-    label(g, b.entrance.x, b.entrance.y + 17, "ENTER", "#e4dfce");
-  }
+  drawEntrance(g, b, player);
+}
+
+function buildingPalette(b: Building, map: MapDef) {
+  const palettes =
+    map.ambience === "paris"
+      ? [
+          ["#d0c8b7", "#79838b"],
+          ["#c7c5b8", "#7d8990"],
+          ["#d2c2b6", "#887e87"],
+          ["#c5c9bd", "#74837f"],
+          ["#d4cabb", "#858b91"],
+        ]
+      : [
+          ["#c8c8b7", "#a29c8c"],
+          ["#c6cbc0", "#8f9b98"],
+          ["#d0c4b3", "#9b8f82"],
+          ["#bcc6c2", "#859592"],
+          ["#d0c8b7", "#9f9786"],
+        ];
+  const index =
+    Math.abs(Math.floor(b.x * 0.17 + b.y * 0.31 + b.w * 0.13 + b.h * 0.07)) %
+    palettes.length;
+  return {
+    facade: b.color ?? palettes[index][0],
+    roof: b.roof ?? palettes[index][1],
+  };
+}
+
+function drawEntrance(
+  g: CanvasRenderingContext2D,
+  b: Building,
+  player?: Entity | null,
+) {
+  const p = b.entrance;
+  if (!p) return;
+  g.fillStyle = "#34494b";
+  g.fillRect(p.x - 6, p.y - 8, 12, 12);
+  g.strokeStyle = "#d5cba8";
+  g.lineWidth = 1.5;
+  g.strokeRect(p.x - 6, p.y - 8, 12, 12);
+  g.fillStyle = "#9db7ae";
+  g.fillRect(p.x + 1, p.y - 5, 2, 2);
+  if (
+    player &&
+    !player.buildingId &&
+    Math.hypot(player.x - p.x, player.y - p.y) <= 76
+  )
+    label(g, p.x, p.y + 18, "ENTER", "#f2e4bb");
 }
 
 function drawRoof(
@@ -252,11 +365,11 @@ function drawRoof(
     return;
   }
   if (b.kind === "block") {
-    g.fillStyle = b.color ?? (paris ? "#ded4c2" : "#d8cfc0");
+    g.fillStyle = buildingPalette(b, map).facade;
     g.fillRect(b.x, b.y, b.w, b.h);
     if (paris) {
       // mansard roof with dormers
-      g.fillStyle = b.roof ?? "#6d7480";
+      g.fillStyle = buildingPalette(b, map).roof;
       g.fillRect(b.x + 12, b.y + 12, b.w - 24, b.h - 24);
       g.strokeStyle = "rgba(255,255,255,0.12)";
       g.lineWidth = 1;
@@ -275,7 +388,7 @@ function drawRoof(
       g.fillRect(b.x + b.w * 0.3, b.y + b.h * 0.35, 16, 16);
       g.fillRect(b.x + b.w * 0.65, b.y + b.h * 0.6, 16, 16);
     } else {
-      g.fillStyle = b.roof ?? "#bfb4a1";
+      g.fillStyle = buildingPalette(b, map).roof;
       g.fillRect(b.x + 8, b.y + 8, b.w - 16, b.h - 16);
       g.strokeStyle = "rgba(0,0,0,0.12)";
       g.lineWidth = 2;
@@ -312,7 +425,12 @@ function drawRoof(
     g.fillRect(b.x + 14, b.y + 2, b.w - 28, 12);
   }
   // awning stripes
-  const aw = b.awning ?? "#9c2f2f";
+  const awningPalette = ["#ba765f", "#6f9a98", "#c29d64", "#8c9278", "#9c7e8a"];
+  const aw =
+    b.awning ??
+    awningPalette[
+      Math.abs(Math.floor(b.x * 0.13 + b.y * 0.29)) % awningPalette.length
+    ];
   for (let i = 0; i < 5; i++) {
     g.fillStyle = i % 2 ? "#efe8d8" : aw;
     if (faceLeft)
@@ -829,21 +947,22 @@ function drawPerson(
     g.fillStyle = e.hp > 50 ? "#5ec96a" : e.hp > 25 ? "#e8b13d" : "#e05545";
     g.fillRect(e.x - 12, e.y + 12, 24 * Math.max(0, e.hp / e.maxHp), 3.4);
   }
-  // player / remote / selection rings + names
-  if (e.isPlayer) {
+  // Only the local player gets the prominent gold marker.
+  if (w.player?.id === e.id) {
     g.strokeStyle = "#ffd75e";
     g.lineWidth = 2;
     g.beginPath();
     g.arc(e.x, e.y, 15, 0, Math.PI * 2);
     g.stroke();
     label(g, e.x, e.y + 26, `▼ ${e.name}`, "#ffd75e");
-  } else if (e.remote) {
-    g.strokeStyle = "#4de8c2";
-    g.lineWidth = 2;
+  } else if (e.remote || e.profileId) {
+    g.strokeStyle = "rgba(91,211,195,0.72)";
+    g.lineWidth = 1.25;
     g.beginPath();
-    g.arc(e.x, e.y, 15, 0, Math.PI * 2);
+    g.arc(e.x, e.y, 12, 0, Math.PI * 2);
     g.stroke();
-    label(g, e.x, e.y + 26, `◉ ${e.name}`, "#4de8c2");
+    if (w.selectedId === e.id)
+      label(g, e.x, e.y + 26, `◉ ${e.name}`, "#8ce1d5");
   } else if (w.selectedId === e.id) {
     label(g, e.x, e.y + 26, e.name, "#fff");
   }
@@ -1173,7 +1292,7 @@ export function drawFrame(
   const speech: { x: number; y: number }[] = [];
   for (const item of drawables) {
     if (item.building) {
-      drawBuilding(ctx, item.building, w.map, time);
+      drawBuilding(ctx, item.building, w.map, time, w.player);
       continue;
     }
     const e = item.entity!;
@@ -1181,7 +1300,7 @@ export function drawFrame(
     else if (e.kind === "truck") drawTruck(ctx, e, time);
     else {
       const showSpeech =
-        e.isPlayer ||
+        e.id === w.player?.id ||
         e.id === w.selectedId ||
         (speech.length < 4 &&
           !speech.some(
@@ -1223,13 +1342,23 @@ export function drawFrame(
     const k = Math.min(1, pr.t / pr.dur);
     if (pr.kind === "stone") {
       const lift = Math.sin(k * Math.PI) * 34;
+      ctx.strokeStyle = "rgba(233,195,115,0.48)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pr.sx, pr.sy);
+      ctx.lineTo(pr.x, pr.y - lift);
+      ctx.stroke();
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath();
       ctx.ellipse(pr.x, pr.y, 3, 2, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#6e675c";
+      ctx.fillStyle = "rgba(222,177,99,0.28)";
       ctx.beginPath();
-      ctx.arc(pr.x, pr.y - lift, 3.4, 0, Math.PI * 2);
+      ctx.arc(pr.x, pr.y - lift, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#c6a96d";
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y - lift, 4.2, 0, Math.PI * 2);
       ctx.fill();
     } else if (pr.kind === "bullet") {
       ctx.strokeStyle = "rgba(255,230,150,0.9)";
@@ -1391,25 +1520,32 @@ export function drawMinimap(
   for (const e of w.entities) {
     if (e.remove || e.buildingId || e.kind === "crate" || e.kind === "truck")
       continue;
-    ctx.fillStyle = e.isPlayer
-      ? "#ffd75e"
-      : e.remote
-        ? "#4de8c2"
-        : e.state === "detained"
-          ? "#6b7686"
-          : e.wanted > 0
-            ? "#ffd75e"
-            : e.kind === "protester"
-              ? e.violentT > 0
-                ? "#ff4632"
-                : "#ff9c4d"
-              : e.kind === "police"
-                ? "#4da3ff"
-                : e.kind === "military"
-                  ? "#8fd45e"
-                  : "#b8b8b8";
+    ctx.fillStyle =
+      e.id === w.player?.id
+        ? "#ffd75e"
+        : e.remote || e.profileId
+          ? "#64c9bb"
+          : e.state === "detained"
+            ? "#6b7686"
+            : e.wanted > 0
+              ? "#ffd75e"
+              : e.kind === "protester"
+                ? e.violentT > 0
+                  ? "#ff4632"
+                  : "#ff9c4d"
+                : e.kind === "police"
+                  ? "#4da3ff"
+                  : e.kind === "military"
+                    ? "#8fd45e"
+                    : "#b8b8b8";
     ctx.beginPath();
-    ctx.arc(e.x * sx, e.y * sy, e.isPlayer ? 3 : 1.7, 0, Math.PI * 2);
+    ctx.arc(
+      e.x * sx,
+      e.y * sy,
+      e.id === w.player?.id ? 3 : 1.7,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     if (e.id === w.selectedId) {
       ctx.strokeStyle = "#fff1a8";

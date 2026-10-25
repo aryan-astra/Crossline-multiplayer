@@ -1,5 +1,5 @@
 import type { Entity, MapDef } from "./types";
-import { collideBuildings, isWalkable } from "./maps";
+import { collideBuildings, isWalkable, queryBuildings } from "./maps";
 
 const CELL = 40;
 type Point = { x: number; y: number };
@@ -60,7 +60,13 @@ function clear(
 ) {
   if (!isWalkable(map, a.x, a.y, 9) || !isWalkable(map, b.x, b.y, 9))
     return false;
-  for (const block of map.buildings) {
+  for (const block of queryBuildings(
+    map,
+    Math.min(a.x, b.x) - 9,
+    Math.min(a.y, b.y) - 9,
+    Math.max(a.x, b.x) + 9,
+    Math.max(a.y, b.y) + 9,
+  )) {
     if (
       Math.max(a.x, b.x) < block.x - 9 ||
       Math.min(a.x, b.x) > block.x + block.w + 9 ||
@@ -158,18 +164,35 @@ export function nextWaypoint(
       x: ((i % cols) + 0.5) * CELL,
       y: (Math.floor(i / cols) + 0.5) * CELL,
     });
-    // Test nearby cells first; scanning from the map corner repeats long polygon sweeps.
-    const candidates: { index: number; point: Point; distance: number }[] = [];
-    for (let i = 0; i < open.length; i++)
-      if (open[i]) {
-        const point = center(i);
-        candidates.push({ index: i, point, distance: distance2(point, e) });
-      }
-    candidates.sort((a, b) => a.distance - b.distance);
-    const start =
-      candidates
-        .slice(0, 32)
-        .find((candidate) => clear(map, e, candidate.point))?.index ?? -1;
+    // Search outwards from the mover; sorting every open cell on each route replan
+    // made large maps pay O(cells log cells) before every graph traversal.
+    const rows = open.length / cols;
+    const cx = Math.floor(e.x / CELL),
+      cy = Math.floor(e.y / CELL);
+    let start = -1;
+    for (let radius = 0; radius <= 3 && start < 0; radius++) {
+      let nearest = Infinity;
+      for (
+        let y = Math.max(0, cy - radius);
+        y <= Math.min(rows - 1, cy + radius);
+        y++
+      )
+        for (
+          let x = Math.max(0, cx - radius);
+          x <= Math.min(cols - 1, cx + radius);
+          x++
+        ) {
+          if (Math.max(Math.abs(x - cx), Math.abs(y - cy)) !== radius) continue;
+          const i = y * cols + x;
+          if (!open[i]) continue;
+          const point = center(i),
+            distance = distance2(point, e);
+          if (distance < nearest && clear(map, e, point)) {
+            nearest = distance;
+            start = i;
+          }
+        }
+    }
     if (start < 0) {
       // A coarse graph can miss narrow passages; take a clear local step and retry after movement.
       let best: Point = { x: e.x, y: e.y };

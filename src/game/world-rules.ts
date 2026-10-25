@@ -64,14 +64,15 @@ export function initializeWorldRules(w: World) {
     recoverySeconds: 60,
   };
   for (const [index, shop] of w.map.buildings
-    .filter((b) => b.kind === "shop")
-    .slice(0, 3)
+    .filter((b) => b.kind !== "wall" && b.kind !== "monument")
     .entries()) {
-    shop.id ??= `${w.map.id}-shop-${index}`;
-    shop.entrance ??=
-      w.map.id === "delhi"
-        ? { x: shop.x - 15, y: shop.y + shop.h / 2 }
-        : { x: shop.x + shop.w / 2, y: shop.y - 15 };
+    shop.id ??= `${w.map.id}-building-${index}`;
+    shop.entrance ??= collideBuildings(
+      w.map,
+      shop.x + shop.w / 2,
+      shop.y + shop.h + 14,
+      9,
+    );
     shop.interior ??= {
       w: 240,
       h: 180,
@@ -324,17 +325,29 @@ export function updateWorldRules(w: World, dt: number) {
   const nearby = w.entities.filter(
     (e) => active(e) && !e.buildingId && distance(e, objective) <= 65,
   );
-  const attackers = nearby.filter(
+  const humanAttackers = nearby.filter(
     (e) =>
       e.kind === "protester" &&
-      (!e.isPlayer || (e.objectiveUntil ?? 0) > w.time),
+      Boolean(e.profileId) &&
+      (e.objectiveUntil ?? 0) > w.time,
   );
+  const attackers = humanAttackers.length
+    ? nearby.filter(
+        (e) =>
+          e.kind === "protester" &&
+          (!e.profileId || humanAttackers.some((human) => human.id === e.id)),
+      )
+    : [];
   const defenders = nearby.filter(
     (e) => e.kind === "police" || e.kind === "military",
   );
   objective.status =
     attackers.length && defenders.length ? "contested" : "protected";
-  if (attackers.length >= 2 && defenders.length === 0) {
+  if (
+    humanAttackers.length > 0 &&
+    attackers.length >= 2 &&
+    defenders.length === 0
+  ) {
     objective.progress += dt;
     for (const e of attackers)
       objective.contributors[e.id] = (objective.contributors[e.id] ?? 0) + dt;
@@ -343,11 +356,14 @@ export function updateWorldRules(w: World, dt: number) {
       finishObjective(w, "protester");
   } else {
     objective.progress = Math.max(0, objective.progress - dt);
-    if (!attackers.length && defenders.length) {
+    if (!attackers.length && defenders.some((e) => Boolean(e.profileId))) {
       objective.phaseT += dt;
       for (const e of defenders)
         objective.contributors[e.id] = (objective.contributors[e.id] ?? 0) + dt;
-      if (objective.phaseT >= objective.defenseSeconds)
+      if (
+        defenders.some((e) => Boolean(e.profileId)) &&
+        objective.phaseT >= objective.defenseSeconds
+      )
         finishObjective(w, "police");
     }
   }

@@ -8,6 +8,7 @@ import {
   doAction,
   roeValid,
 } from "../src/game/engine";
+import { collideBuildings } from "../src/game/maps";
 import {
   interactObjective,
   updateWorldRules,
@@ -115,6 +116,28 @@ test("objective needs sustained cooperation, can be contested, captures once and
   assert.equal(w.factionScores?.protester, 1);
 });
 
+test("NPCs support a Constitution Book capture only after a human contributes", () => {
+  const w = persistent(),
+    objective = w.objective!,
+    human = spawnPlayer(w, "protester", "A", "A")!;
+  Object.assign(human, { x: objective.x, y: objective.y });
+  const npc = structuredClone(human);
+  Object.assign(npc, {
+    id: w.nextId++,
+    profileId: undefined,
+    isPlayer: false,
+    remote: false,
+    name: "NPC",
+  });
+  w.entities.push(npc);
+  for (let i = 0; i < objective.captureSeconds + 1; i++) updateWorldRules(w, 1);
+  assert.equal(objective.progress, 0);
+  assert.equal(w.factionScores?.protester, 0);
+  interactObjective(w, human);
+  for (let i = 0; i < objective.captureSeconds; i++) updateWorldRules(w, 1);
+  assert.equal(w.factionScores?.protester, 1);
+});
+
 test("defensive victory is local to an objective cycle", () => {
   const w = persistent(),
     cop = spawnPlayer(w, "police", "Cop", "Cop")!;
@@ -209,6 +232,9 @@ test("doors enforce physical entry, occupancy, indoor collisions and return thro
   const point = insidePosition(w, p, -50, 1000);
   assert.equal(point.x, 10);
   assert.equal(point.y, 170);
+  const outside = collideBuildings(w.map, -50, w.map.h + 500, 9);
+  assert.equal(outside.x, 10);
+  assert.equal(outside.y, w.map.h - 10);
   p.x = 50;
   p.y = 50;
   assert.equal(exitBuilding(w, p), false);

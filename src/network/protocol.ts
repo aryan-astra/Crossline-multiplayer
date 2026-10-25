@@ -65,6 +65,7 @@ export interface Prediction {
 export interface Ranking {
   id: string;
   name: string;
+  credits: number;
   score: number;
   policeScore: number;
   protesterScore: number;
@@ -98,6 +99,25 @@ export type WireSnapshot = Omit<Snapshot, "world"> & {
   mapId: MapId;
   buildingStates: [number, boolean][];
 };
+export interface SnapshotDelta {
+  v: 1;
+  type: "delta";
+  tick: number;
+  ack: number;
+  baseTick: number;
+  mapId: MapId;
+  patch: Record<string, unknown>;
+  unset?: string[];
+  world: Record<string, unknown>;
+  worldUnset?: string[];
+  entities: {
+    remove: number[];
+    order: number[];
+    upsert: { id: number; fields: Record<string, unknown>; unset?: string[] }[];
+  };
+  events: Snapshot["world"]["events"];
+  eventsReset?: boolean;
+}
 export interface MapMessage {
   v: 1;
   type: "map";
@@ -106,6 +126,7 @@ export interface MapMessage {
 export type ServerMessage =
   | Snapshot
   | WireSnapshot
+  | SnapshotDelta
   | MapMessage
   | {
       v: 1;

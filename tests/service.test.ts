@@ -188,6 +188,13 @@ test("world interactions report server-validated results to the shared feed", ()
     service.command(id, command({ type: "action", action: "interact" }));
     assert.ok((player.objectiveUntil ?? 0) > w.time);
     assert.match(w.feed[0].text, /joined the Constitution Book objective/);
+    player.stones = 0;
+    assert.throws(
+      () =>
+        service.command(id, command({ type: "action", action: "secondary" })),
+      /Out of stones/,
+    );
+    assert.equal(w.player, null);
   } finally {
     store.close();
   }

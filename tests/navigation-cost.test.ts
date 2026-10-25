@@ -51,3 +51,25 @@ test("reached cached waypoints do not skip validation of the next segment", () =
 
   assert.equal(hasLineOfSight(map, mover, waypoint), true);
 });
+
+test("large maps choose a nearby open start cell when replanning", () => {
+  const world = createWorld("paris", "protester", "Test", "test", 0, 0);
+  const map = structuredClone(world.map);
+  map.w = 4400;
+  map.h = 3000;
+  map.buildings = [
+    { kind: "block", x: 400, y: 0, w: 80, h: 500, hp: 100, maxHp: 100 },
+  ];
+  const mover: Entity = {
+    ...world.player!,
+    x: 100,
+    y: 100,
+    path: undefined,
+    pathTarget: undefined,
+  };
+
+  const waypoint = nextWaypoint(map, mover, 4000, 2800);
+
+  assert.ok(mover.path?.length);
+  assert.ok(Math.hypot(waypoint.x - mover.x, waypoint.y - mover.y) <= 40);
+});

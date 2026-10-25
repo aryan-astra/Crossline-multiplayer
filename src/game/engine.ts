@@ -342,7 +342,8 @@ export function createWorld(
   const nextName = () => names[ni++ % names.length];
   // crowd
   for (let i = 0; i < 34; i++) {
-    const p = map.rallyPoints[i % map.rallyPoints.length];
+    const rallyIdx = i % map.rallyPoints.length;
+    const p = map.rallyPoints[rallyIdx];
     const e = makeEntity(
       w,
       "protester",
@@ -351,6 +352,7 @@ export function createWorld(
       p.y + (random(w) - 0.5) * 110,
       nextName(),
     );
+    e.rallyIdx = rallyIdx;
     e.brain.aggression = clamp(e.brain.aggression * 0.9 + 0.05, 0, 1);
     w.entities.push(e);
   }
@@ -401,6 +403,7 @@ export function createWorld(
     p.speed = 110;
     p.rank = rankFor(careerDetentions);
     p.sign = role === "protester";
+    if (role === "protester") p.stones = 3;
     w.entities.push(p);
     w.player = p;
   }
@@ -581,6 +584,10 @@ function detain(w: World, cop: Entity, target: Entity) {
 }
 
 function throwStone(w: World, e: Entity, tx: number, ty: number) {
+  if (Math.hypot(tx - e.x, ty - e.y) < 1) {
+    tx = e.x + Math.cos(e.dir) * 160;
+    ty = e.y + Math.sin(e.dir) * 160;
+  }
   if (w.persistent) markWanted(w, e);
   e.violentT = 8;
   e.recentThrowT = 3;
@@ -770,34 +777,33 @@ function updateProtester(w: World, e: Entity, dt: number) {
     if (e.stateT <= 0) e.state = "march";
     return;
   }
+  if (w.tension >= 55) {
+    const human = nearest(
+      w,
+      e,
+      (o) => o.kind === "protester" && o.isPlayer && o.state !== "flee",
+      260,
+    );
+    if (human) {
+      e.target = rallyTarget(e, human, 90, w.time);
+      e.state = "march";
+      moveTo(w, e, e.target.x, e.target.y, e.speed, dt);
+      return;
+    }
+  }
   if (e.brain.discipline >= 0.65 && e.violentT <= 0) {
     const points = w.map.rallyPoints;
-    const objective =
-      w.persistent && w.objective && w.objective.status !== "recovering"
-        ? w.objective
-        : null;
-    if (points.length === 0 && !objective) return;
-    if (!objective && e.rallyIdx >= points.length) {
+    if (points.length === 0) return;
+    if (e.rallyIdx >= points.length) {
       e.rallyIdx = 0;
       e.target = null;
     }
-    if (objective && e.rallyIdx >= points.length) {
-      e.target = { x: objective.x, y: objective.y };
-    }
     const target = e.target;
-    if (
-      (!target || dist(e, target) < 24) &&
-      !(objective && e.rallyIdx >= points.length)
-    ) {
-      if (e.target)
-        e.rallyIdx = (e.rallyIdx + 1) % (points.length + (objective ? 1 : 0));
-      if (objective && e.rallyIdx >= points.length)
-        e.target = { x: objective.x, y: objective.y };
-      else {
-        const rally = points[e.rallyIdx % points.length];
-        const target = rallyTarget(e, rally, 65, 0);
-        e.target = collideBuildings(w.map, target.x, target.y, 9);
-      }
+    if (!target || dist(e, target) < 24) {
+      if (e.target) e.rallyIdx = (e.rallyIdx + 1) % points.length;
+      const rally = points[e.rallyIdx];
+      const target = rallyTarget(e, rally, 65, 0);
+      e.target = collideBuildings(w.map, target.x, target.y, 9);
     }
     e.state = "march";
     const destination = e.target;
@@ -1063,18 +1069,6 @@ function updatePolice(w: World, e: Entity, dt: number) {
       return;
     }
   }
-  if (w.persistent && w.objective && e.rank >= 1) {
-    moveTo(
-      w,
-      e,
-      w.objective.x + ((idx % 3) - 1) * 25,
-      w.objective.y + 40,
-      e.speed * 0.8,
-      dt,
-    );
-    e.state = "patrol";
-    return;
-  }
   const lp = w.map.policeLine[idx % w.map.policeLine.length];
   moveTo(w, e, lp.x, lp.y, e.speed * 0.8, dt);
   e.state = "patrol";
@@ -1310,7 +1304,7 @@ export function doAction(
           "bad",
         );
       } else if (p.cooldown <= 0) {
-        say(p, "You can't silence us!", 2);
+        say(p, "No stones. Grab supplies from a crate.", 2);
         w.tension = clamp(w.tension + 1.5, 0, 100);
         w.morale = clamp(w.morale + 2, 0, 100);
         p.cooldown = 1.5;
@@ -1613,6 +1607,7 @@ export function spawnPlayer(
   player.profileId = identity;
   player.speed = 110;
   player.sign = role === "protester";
+  if (role === "protester") player.stones = 3;
   w.entities.push(player);
   return player;
 }
@@ -1955,6 +1950,12 @@ export function update(w: World, dt: number, input: InputState) {
   }
 
   for (const e of solids)
+    if (e.isPlayer) {
+      e.x = clamp(e.x, 9, w.map.w - 9);
+      e.y = clamp(e.y, 9, w.map.h - 9);
+    }
+
+  for (const e of solids)
     if (!e.remote) Object.assign(e, collideBuildings(w.map, e.x, e.y, 9));
 
   // projectiles
@@ -2145,7 +2146,25 @@ function replenishPopulation(w: World) {
       continue;
     }
     if (bots.length >= targets[kind]) continue;
-    const point = w.map.spawns[kind];
+    const count = bots.length;
+    const anchors =
+      kind === "protester"
+        ? w.map.rallyPoints
+        : kind === "police"
+          ? w.map.policeLine
+          : kind === "military"
+            ? w.map.checkpoints
+            : [];
+    const anchor = anchors.length
+      ? anchors[count % anchors.length]
+      : w.map.spawns[kind];
+    const point =
+      kind === "protester"
+        ? rallyTarget({ id: count + 1 }, anchor, 55, 0)
+        : {
+            x: anchor.x + (random(w) - 0.5) * (kind === "civilian" ? 500 : 50),
+            y: anchor.y + (random(w) - 0.5) * (kind === "civilian" ? 300 : 50),
+          };
     const e = makeEntity(
       w,
       kind,
@@ -2154,6 +2173,7 @@ function replenishPopulation(w: World) {
       point.y,
       NAMES[w.map.id][Math.floor(random(w) * NAMES[w.map.id].length)],
     );
+    if (kind === "protester") e.rallyIdx = count % w.map.rallyPoints.length;
     Object.assign(e, collideBuildings(w.map, e.x, e.y, 9));
     e.journalist = kind === "civilian" && bots.length < 2;
     w.entities.push(e);

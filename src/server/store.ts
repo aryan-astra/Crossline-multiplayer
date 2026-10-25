@@ -247,6 +247,18 @@ export class Store {
       : (JSON.parse(String(row.character)) as Entity);
   }
 
+  savedCharacters(mapId: MapId): { id: string; entity: Entity }[] {
+    return this.db
+      .prepare(
+        "SELECT id,character FROM profiles WHERE mapId=? AND character IS NOT NULL",
+      )
+      .all(mapId)
+      .map((row) => ({
+        id: String(row.id),
+        entity: JSON.parse(String(row.character)) as Entity,
+      }));
+  }
+
   saveCharacter(id: string, entity: Entity | null): void {
     const result = this.db
       .prepare("UPDATE profiles SET character=? WHERE id=?")
@@ -435,7 +447,7 @@ export class Store {
   rankings(): Ranking[] {
     return this.db
       .prepare(
-        "SELECT id,name,score,policeScore,protesterScore,watcherProfit,appointmentUntil FROM profiles ORDER BY score DESC,policeScore DESC,id LIMIT 100",
+        "SELECT id,name,credits,score,policeScore,protesterScore,watcherProfit,appointmentUntil FROM profiles ORDER BY score DESC,policeScore DESC,id LIMIT 100",
       )
       .all() as unknown as Ranking[];
   }

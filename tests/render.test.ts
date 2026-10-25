@@ -91,11 +91,60 @@ test("roofs occlude characters behind the facade and culling skips distant actor
     { ...actor, x: 150, y: 230, id: 2, name: "Front", isPlayer: true },
     { ...actor, x: 2000, y: 1400, id: 3, name: "Distant", isPlayer: true },
   ];
+  w.selectedId = 2;
   const labels: string[] = [];
   drawFrame(recordingContext(labels), w, 400, 400, {} as HTMLCanvasElement);
   assert.ok(labels.indexOf("▼ Behind") < labels.indexOf("TEST BLOCK"));
-  assert.ok(labels.indexOf("TEST BLOCK") < labels.indexOf("▼ Front"));
+  assert.ok(labels.indexOf("TEST BLOCK") < labels.indexOf("Front"));
   assert.ok(!labels.includes("▼ Distant"));
+});
+
+test("only the local human gets a gold name; remote names appear on selection", () => {
+  const w = createWorld("paris", "protester", "Local", "test", 500, 0);
+  const local = w.player!;
+  local.x = w.camX;
+  local.y = w.camY;
+  const remote = {
+    ...local,
+    id: w.nextId++,
+    profileId: "remote-profile",
+    remote: true,
+    name: "Remote",
+    x: local.x + 30,
+  };
+  w.entities = [local, remote];
+  w.map.buildings = [];
+  w.map.trees = [];
+  w.objective = undefined;
+  w.resources = [];
+  const labels: string[] = [];
+  drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
+  assert.ok(labels.includes("▼ Local"));
+  assert.ok(!labels.includes("◉ Remote"));
+  w.selectedId = remote.id;
+  labels.length = 0;
+  drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
+  assert.ok(labels.includes("◉ Remote"));
+});
+
+test("entrances keep a quiet door glyph and show ENTER only nearby", () => {
+  const w = createWorld("delhi", "protester", "Walker", "test", 500, 0);
+  const building = structuredClone(w.map.buildings.find((b) => b.entrance)!);
+  w.map.buildings = [building];
+  w.map.trees = [];
+  w.objective = undefined;
+  w.resources = [];
+  w.camX = building.entrance!.x;
+  w.camY = building.entrance!.y;
+  const labels: string[] = [];
+  w.player!.x = building.entrance!.x + 110;
+  w.player!.y = building.entrance!.y;
+  drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
+  assert.ok(!labels.includes("ENTER"));
+  w.player!.x = building.entrance!.x;
+  labels.length = 0;
+  drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
+  assert.ok(labels.includes("ENTER"));
 });
 
 test("interior cutaway shows only that building's occupants without mutating snapshots", () => {

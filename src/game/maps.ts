@@ -8,11 +8,18 @@ type OSMExport = {
   projection: {
     center: { lon: number; lat: number };
     metersPerWorldUnit: number;
+    width?: number;
+    height?: number;
   };
   buildings: { id: string; tags: Record<string, string>; ring: number[][] }[];
   roads: { id: string; tags: Record<string, string>; line: number[][] }[];
 };
 type Point = { x: number; y: number };
+const buildingGrid = new WeakMap<
+  MapDef,
+  { buildings: Building[]; length: number; cells: Map<string, number[]> }
+>();
+const gridSize = 160;
 
 function clipRing(
   ring: Point[],
@@ -120,13 +127,17 @@ function clipLine(
 function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
   const point = (p: number[]): Point => ({ x: p[0], y: p[1] });
   const scale = 1 / data.projection.metersPerWorldUnit;
+  const w = data.projection.width ?? 2200;
+  const h = data.projection.height ?? 1500;
+  const center = { x: w / 2, y: h / 2 };
   const { lon, lat } = data.projection.center;
   const cosLat = Math.cos((lat * Math.PI) / 180);
   const cropRect = {
     x:
-      1100 -
+      center.x -
       ((data.bounds.east - data.bounds.west) * 111320 * cosLat * scale) / 2,
-    y: 750 - ((data.bounds.north - data.bounds.south) * 111320 * scale) / 2,
+    y:
+      center.y - ((data.bounds.north - data.bounds.south) * 111320 * scale) / 2,
     w: (data.bounds.east - data.bounds.west) * 111320 * cosLat * scale,
     h: (data.bounds.north - data.bounds.south) * 111320 * scale,
   };
@@ -187,8 +198,8 @@ function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
         ? "Jantar Mantar, New Delhi"
         : "Place de la République, Paris",
     country: id === "delhi" ? "India" : "France",
-    w: 2200,
-    h: 1500,
+    w,
+    h,
     ambience: id,
     buildings,
     trees: [],
@@ -214,8 +225,8 @@ function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
     objectivePoint: { x: 0, y: 0 },
   };
   const projectGeo = (latitude: number, longitude: number): Point => ({
-    x: 1100 + (longitude - lon) * 111320 * cosLat * scale,
-    y: 750 - (latitude - lat) * 111320 * scale,
+    x: center.x + (longitude - lon) * 111320 * cosLat * scale,
+    y: center.y - (latitude - lat) * 111320 * scale,
   });
   const landmark =
     id === "delhi" ? projectGeo(28.6271, 77.2166) : projectGeo(48.8675, 2.3638);
@@ -238,7 +249,31 @@ function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
   map.objectivePoint = open(landmark);
   const at = (dx: number, dy: number) =>
     open({ x: landmark.x + dx, y: landmark.y + dy });
-  map.rallyPoints = [at(-80, 0), at(-35, 45), at(35, -35), at(80, 30)];
+  const cells = new Map<string, { point: Point; distance: number }>();
+  for (const way of roadWays)
+    for (let i = 1; i < way.line.length; i++) {
+      const a = way.line[i - 1];
+      const b = way.line[i];
+      const p = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const cx = Math.floor((p.x / w) * 4);
+      const cy = Math.floor((p.y / h) * 4);
+      if (cx < 0 || cx > 3 || cy < 0 || cy > 3) continue;
+      const center = { x: ((cx + 0.5) * w) / 4, y: ((cy + 0.5) * h) / 4 };
+      const distance = Math.hypot(p.x - center.x, p.y - center.y);
+      const key = `${cx},${cy}`;
+      if (distance < (cells.get(key)?.distance ?? Infinity))
+        cells.set(key, { point: p, distance });
+    }
+  const districtRallies = [...cells.values()]
+    .map(({ point }) => open(point))
+    .filter(
+      (p, i, points) =>
+        isWalkable(map, p.x, p.y, 9) &&
+        points
+          .slice(0, i)
+          .every((other) => Math.hypot(p.x - other.x, p.y - other.y) > 100),
+    );
+  map.rallyPoints = [at(-35, 45), at(35, -35), ...districtRallies];
   map.policeLine = [
     at(260, -120),
     at(280, -60),
@@ -308,10 +343,23 @@ function makeMap(id: "delhi" | "paris", data: OSMExport): MapDef {
         size: 11,
       });
     }
-  for (const shop of buildings.filter((b) => b.kind === "shop").slice(0, 3)) {
-    // Place the public entrance on the nearest navigable edge of the real footprint.
-    const center = { x: shop.x + shop.w / 2, y: shop.y + shop.h / 2 };
-    shop.entrance = open({ x: center.x, y: shop.y + shop.h + 14 });
+  for (const [index, building] of buildings
+    .filter((b) => b.kind !== "wall" && b.kind !== "monument")
+    .entries()) {
+    building.id ??= `${id}-building-${index}`;
+    building.entrance = open({
+      x: building.x + building.w / 2,
+      y: building.y + building.h + 14,
+    });
+    building.interior = {
+      w: 240,
+      h: 180,
+      capacity: 6,
+      obstacles: [
+        { x: 30, y: 30, w: 70, h: 28 },
+        { x: 150, y: 30, w: 60, h: 28 },
+      ],
+    };
   }
   return map;
 }
@@ -392,11 +440,67 @@ function collidePolygon(
   return { x: edgePoint.x + dx * (r + 0.01), y: edgePoint.y + dy * (r + 0.01) };
 }
 
+export function queryBuildings(
+  map: MapDef,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+) {
+  let grid = buildingGrid.get(map);
+  if (
+    !grid ||
+    grid.buildings !== map.buildings ||
+    grid.length !== map.buildings.length
+  ) {
+    const cells = new Map<string, number[]>();
+    map.buildings.forEach((b, index) => {
+      for (
+        let cy = Math.floor(b.y / gridSize);
+        cy <= Math.floor((b.y + b.h) / gridSize);
+        cy++
+      )
+        for (
+          let cx = Math.floor(b.x / gridSize);
+          cx <= Math.floor((b.x + b.w) / gridSize);
+          cx++
+        ) {
+          const key = `${cx},${cy}`;
+          const bucket = cells.get(key);
+          if (bucket) bucket.push(index);
+          else cells.set(key, [index]);
+        }
+    });
+    grid = { buildings: map.buildings, length: map.buildings.length, cells };
+    buildingGrid.set(map, grid);
+  }
+  const indexes = new Set<number>();
+  for (
+    let cy = Math.floor(minY / gridSize);
+    cy <= Math.floor(maxY / gridSize);
+    cy++
+  )
+    for (
+      let cx = Math.floor(minX / gridSize);
+      cx <= Math.floor(maxX / gridSize);
+      cx++
+    )
+      for (const index of grid.cells.get(`${cx},${cy}`) ?? [])
+        indexes.add(index);
+  return [...indexes]
+    .sort((a, b) => a - b)
+    .map((index) => map.buildings[index]);
+}
+
+function nearbyBuildings(map: MapDef, x: number, y: number, r: number) {
+  return queryBuildings(map, x - r, y - r, x + r, y + r);
+}
+
 function resolveBuildings(map: MapDef, x: number, y: number, r: number): Point {
   for (let pass = 0; pass < 12; pass++) {
     const startX = x,
       startY = y;
-    for (const b of map.buildings) {
+    for (const b of nearbyBuildings(map, x, y, r)) {
       if (
         b.kind !== "wall" &&
         b.kind !== "block" &&
@@ -452,7 +556,7 @@ export function isWalkable(
   r: number,
 ): boolean {
   if (x < 10 || y < 10 || x > map.w - 10 || y > map.h - 10) return false;
-  for (const b of map.buildings) {
+  for (const b of nearbyBuildings(map, x, y, r)) {
     if (!["wall", "block", "shop", "monument"].includes(b.kind)) continue;
     if (x + r < b.x || x - r > b.x + b.w || y + r < b.y || y - r > b.y + b.h)
       continue;

@@ -67,7 +67,7 @@ test("accounts, tokens, characters, holdings, bets and world checkpoints survive
     assert.equal(store.meta("next-appointment", 0), 900);
     assert.equal(store.meta("missing", 123), 123);
     assert.equal(store.rankings()[0].policeScore, -2);
-    assert.equal("credits" in store.rankings()[0], false);
+    assert.equal(store.rankings()[0].credits, 69);
     store.saveCharacter(profile.id, null);
     assert.equal(store.character(profile.id), null);
     store.saveBet({ ...bet, status: "won" });

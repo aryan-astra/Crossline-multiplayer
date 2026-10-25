@@ -1,14 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createWorld } from "../src/game/engine";
-import { MAPS, collideBuildings } from "../src/game/maps";
+import { MAPS, collideBuildings, isWalkable } from "../src/game/maps";
 import { hasLineOfSight, nextWaypoint } from "../src/game/navigation";
+import {
+  enterBuilding,
+  exitBuilding,
+  initializeWorldRules,
+} from "../src/game/world-rules";
 
 test("bundled OSM footprints and navigation anchors stay on open ground", () => {
   for (const map of Object.values(MAPS)) {
     assert.ok(map.buildings.length >= 80);
     assert.ok((map.roadWays?.length ?? 0) > 0);
     assert.ok(map.cropRect);
+    assert.ok(map.rallyPoints.length >= 12 && map.rallyPoints.length <= 20);
+    assert.ok(
+      Math.max(...map.rallyPoints.map((p) => p.x)) -
+        Math.min(...map.rallyPoints.map((p) => p.x)) >
+        map.w / 2,
+    );
+    assert.ok(
+      Math.max(...map.rallyPoints.map((p) => p.y)) -
+        Math.min(...map.rallyPoints.map((p) => p.y)) >
+        map.h / 2,
+    );
     for (const p of [
       ...map.buildings.flatMap((b) => b.footprint ?? []),
       ...(map.roadWays ?? []).flatMap((r) => r.line),
@@ -29,6 +45,33 @@ test("bundled OSM footprints and navigation anchors stay on open ground", () => 
       const pushed = collideBuildings(map, edge.x, edge.y, 9);
       assert.ok(Math.hypot(pushed.x - edge.x, pushed.y - edge.y) > 0.1);
     }
+    const usableBuildings = map.buildings.filter(
+      (b) => b.kind !== "wall" && b.kind !== "monument",
+    );
+    assert.ok(usableBuildings.length > 0);
+    for (const building of usableBuildings) {
+      assert.ok(
+        building.entrance && building.interior,
+        `${map.id} ${building.id} lacks access`,
+      );
+      assert.ok(isWalkable(map, building.entrance!.x, building.entrance!.y, 9));
+      const interior = building.interior!;
+      const room = {
+        ...map,
+        w: interior.w,
+        h: interior.h,
+        buildings: interior.obstacles.map((rect) => ({
+          ...rect,
+          kind: "block" as const,
+          hp: 1,
+          maxHp: 1,
+        })),
+      };
+      assert.deepEqual(
+        collideBuildings(room, interior.w / 2, interior.h - 24, 9),
+        { x: interior.w / 2, y: interior.h - 24 },
+      );
+    }
     const anchors = [
       ...map.rallyPoints,
       ...map.policeLine,
@@ -46,6 +89,20 @@ test("bundled OSM footprints and navigation anchors stay on open ground", () => 
     for (const p of anchors)
       assert.deepEqual(collideBuildings(map, p.x, p.y, 9), p);
     const world = createWorld(map.id, "protester", "Test", "test", 0, 0, 17);
+    const worldBuildings = world.map.buildings.filter(
+      (b) => b.kind !== "wall" && b.kind !== "monument",
+    );
+    for (const building of worldBuildings) {
+      delete building.entrance;
+      delete building.interior;
+    }
+    initializeWorldRules(world);
+    for (const building of worldBuildings) {
+      assert.ok(isWalkable(map, building.entrance!.x, building.entrance!.y, 9));
+      Object.assign(world.player!, building.entrance);
+      assert.equal(enterBuilding(world, world.player!, building.id!), true);
+      assert.equal(exitBuilding(world, world.player!), true);
+    }
     for (const entity of world.entities) {
       const p = collideBuildings(map, entity.x, entity.y, 9);
       assert.ok(Math.hypot(entity.x - p.x, entity.y - p.y) < 0.02);
