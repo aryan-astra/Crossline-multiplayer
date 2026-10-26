@@ -5,7 +5,7 @@ The homepage now uses a single-screen game lobby following the user's visual rev
 ## What comes from each prototype
 
 - **STREETS / Crowd Command:** oversized condensed title, amber street-poster accent, the "Every street has two sides" line, callsign registration panel, faction colors and role descriptions.
-- **FLASHPOINT / Rally Lines:** illustrated hero, sequential callsign/location/role selection, image-led city choices and a clear final entry action. Portrait assets remain available, but the compact role step uses text to fit one screen.
+- **FLASHPOINT / Rally Lines:** illustrated hero, sequential callsign/location/role selection, image-led city choices and a clear final entry action. Existing generated role portraits are now included in compact role cards; duplicate review controls and repeated key instructions were removed to give the choices room.
 - **Crossline baseline:** game name, shared authoritative world, accessible native radio groups, responsive controls, focus management and honest connection status.
 
 The original prototypes' `/img/title.jpg`, `/img/hero-bg.jpg`, location images and role portraits were referenced in code but absent from the supplied directories. The project and both source trees were searched; public web searches for the exact prototype titles did not locate a recoverable original. The user authorized finding images or choosing the best replacement route. The assets below are newly generated replacements, **not recovered original artwork**.

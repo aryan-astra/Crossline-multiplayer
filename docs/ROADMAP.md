@@ -1,5 +1,7 @@
 # Roadmap
 
+The current player-reported fixes, acceptance checks and remaining earlier requests are tracked in [the playability delivery plan](PLAYABILITY_PLAN.md).
+
 This change implements shared local server simulation, persisted guests/ledger/checkpoints, authenticated WebSocket commands, continuous objectives, resources/interiors, custody/death, server role actions and appointments, snapshot-driven cameras/HUD, virtual markets/predictions/supplies, and deterministic/persistence/transport checks. See VALIDATION.md for executed evidence and omissions.
 
 Next priorities:
@@ -19,6 +21,6 @@ Custom maps, paid services, real-money gambling, ML agents and unlimited concurr
 2. Commander regroup pings and visible bot intent, with short attack wind-ups and clear crowd support boundaries.
 3. Supply escorts and interception with vehicle-sized collision and recoverable cargo, after route profiling.
 4. District rotations, optional crowd-density overlays and recorded authoritative replays for diagnosing stuck agents.
-5. Invite-code rooms with bounded player/bot budgets and recoverable public accounts before larger public competition.
+5. One shared public endpoint with bounded admission and recoverable public accounts before larger public competition; preserve the user's preference for a common world over randomly assigned rooms.
 
 Each needs a small playable acceptance scenario and a measured CPU/network budget. More decorative menus are not a priority over input latency and readable play.
