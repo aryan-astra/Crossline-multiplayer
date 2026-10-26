@@ -147,13 +147,16 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
     else Reflect.deleteProperty(globalThis, "window");
   });
   const joinedTicks: number[] = [];
+  const actionNotices: string[] = [];
   const connection = connectWorld({
     name: "Test",
     join: () => ({ type: "join", mapId: "delhi", role: "watcher" }),
     onSnapshot(snapshot) {
       joinedTicks.push(snapshot.tick);
     },
-    onNotice() {},
+    onNotice(message) {
+      actionNotices.push(message);
+    },
     onStatus() {},
   });
   t.after(() => connection.close());
@@ -177,6 +180,19 @@ test("connection sequences commands, reuses cookie identity on reconnect, and ca
     data: JSON.stringify({ ...bootstrap, tick: 11, ack: 1 }),
   });
   assert.deepEqual(joinedTicks, [11]);
+  sockets[0].onmessage!({
+    data: JSON.stringify({
+      v: 1,
+      type: "ack",
+      seq: 2,
+      message: "No officer in reach.",
+    }),
+  });
+  assert.equal(actionNotices.at(-1), "No officer in reach.");
+  sockets[0].onmessage!({
+    data: JSON.stringify({ v: 1, type: "ack", seq: 3, message: "Accepted" }),
+  });
+  assert.equal(actionNotices.length, 1);
   connection.send({ type: "ping" });
   assert.deepEqual(
     sockets[0].sent.map((raw) => JSON.parse(raw).seq),

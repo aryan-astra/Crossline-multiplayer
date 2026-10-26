@@ -329,6 +329,8 @@ export class GameService {
             }
           }
         }
+        const joined = this.entity(id);
+        if (joined) joined.name = p.name;
         this.checkpoint();
       });
     } catch (error) {
@@ -538,6 +540,7 @@ export class GameService {
     w.role = p.role;
     w.playerName = p.name;
     w.careerDetentions = p.detentions;
+    const feedBefore = w.feedSeq;
     try {
       if (message.type === "order") issueOrder(w, message.x, message.y, "move");
       else if (message.type === "action") {
@@ -595,6 +598,7 @@ export class GameService {
             );
           else feed(w, "Move to a marked open doorway to enter.");
         } else doAction(w, message.action, message.targetId);
+        if (w.feedSeq > feedBefore) return w.feed[0].text;
       }
     } finally {
       w.player = null;

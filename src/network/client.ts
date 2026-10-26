@@ -357,6 +357,8 @@ export function connectWorld(options: {
           if (message.type === "error") options.onNotice(message.message);
           else if (transaction)
             options.onNotice("Transaction accepted by the server.");
+          else if (message.message !== "Accepted")
+            options.onNotice(message.message);
         }
       };
       active.onerror = () => {

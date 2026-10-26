@@ -165,7 +165,35 @@ test("funding creates one bounded delivery, debits once and blocks market manipu
   }
 });
 
-test("world interactions report server-validated results to the shared feed", () => {
+test("overhead callsigns refresh for disconnected and saved characters without resetting them", () => {
+  for (const restored of [false, true]) {
+    const { store, service, id } = setup();
+    try {
+      service.join(id, "delhi", "protester");
+      const world = service.worlds.delhi;
+      const player = world.entities.find((e) => e.profileId === id)!;
+      player.hp = 73;
+      const { x, y } = player;
+      service.disconnect(id);
+      store.saveCharacter(id, player);
+      if (restored)
+        world.entities = world.entities.filter((e) => e.id !== player.id);
+      store.rename(id, "New callsign");
+      service.join(id, "delhi", "protester");
+      const joined = world.entities.find(
+        (e) => e.profileId === id && !e.remove,
+      )!;
+      assert.equal(joined.name, "New callsign");
+      assert.equal(joined.hp, 73);
+      assert.equal(joined.x, x);
+      assert.equal(joined.y, y);
+    } finally {
+      store.close();
+    }
+  }
+});
+
+test("world interactions return feedback for the acting client and report validated outcomes", () => {
   const { store, service, id } = setup();
   try {
     service.join(id, "delhi", "protester");
@@ -178,7 +206,11 @@ test("world interactions report server-validated results to the shared feed", ()
       hunger: 40,
       thirst: 40,
     });
-    service.command(id, command({ type: "action", action: "interact" }));
+    const feedback = service.command(
+      id,
+      command({ type: "action", action: "interact" }),
+    );
+    assert.match(String(feedback), /collected essentials/);
     assert.ok(player.hunger > 40 && player.thirst > 40);
     assert.match(w.feed[0].text, /collected essentials/);
 
@@ -188,6 +220,13 @@ test("world interactions report server-validated results to the shared feed", ()
     service.command(id, command({ type: "action", action: "interact" }));
     assert.ok((player.objectiveUntil ?? 0) > w.time);
     assert.match(w.feed[0].text, /joined the Constitution Book objective/);
+    player.cooldown = 2;
+    assert.match(
+      String(
+        service.command(id, command({ type: "action", action: "primary" })),
+      ),
+      /cooldown/,
+    );
     player.stones = 0;
     assert.throws(
       () =>

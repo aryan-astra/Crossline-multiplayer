@@ -373,7 +373,7 @@ export function createGameServer({
             message: "Action rate exceeded",
           });
         try {
-          service.command(profile.id, message);
+          const feedback = service.command(profile.id, message);
           if (message.type === "join")
             connection.supportsDeltas = message.supportsDeltas === true;
           send(connection, {
@@ -381,7 +381,7 @@ export function createGameServer({
             type: "ack",
             seq: message.seq,
             requestId: message.requestId,
-            message: "Accepted",
+            message: typeof feedback === "string" ? feedback : "Accepted",
           });
           if (message.type !== "input" && message.type !== "ping")
             snapshot(profile.id, connection);
