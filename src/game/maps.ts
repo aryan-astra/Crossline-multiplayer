@@ -630,8 +630,11 @@ export function ensureObjectiveDefenses(map: MapDef) {
     });
   }
   map.policeLine = Array.from({ length: 14 }, (_, i) => {
-    const angle = ((i < 3 ? i : i - 3) * Math.PI * 2) / (i < 3 ? 3 : 11);
-    const radius = i < 3 ? 50 : 170;
+    const innerRing = i < 6;
+    const ringIndex = innerRing ? i : i - 6;
+    const ringCount = innerRing ? 6 : 8;
+    const angle = (ringIndex * Math.PI * 2) / ringCount;
+    const radius = innerRing ? 65 : 170;
     return collideBuildings(
       map,
       objective.x + Math.cos(angle) * radius,

@@ -9,7 +9,7 @@ import {
   enterBuilding,
 } from "./world-rules";
 import { nextWaypoint, hasLineOfSight } from "./navigation";
-import { formationSlot, rallyTarget } from "./ai";
+import { formationSlot, rallyTarget, spreadLegacyCrowd } from "./ai";
 import { supplyOption } from "./equipment";
 import { moveCharacter } from "./movement";
 import { placeName } from "./place-names";
@@ -32,6 +32,11 @@ function random(w: World): number {
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
   Math.hypot(a.x - b.x, a.y - b.y);
+const initializedCrowdAI = new WeakSet<World>();
+
+export function roleSpeed(role: "protester" | "police" | "military") {
+  return role === "protester" ? 120 : role === "police" ? 100 : 80;
+}
 
 const NAMES: Record<MapId, string[]> = {
   delhi: [
@@ -174,6 +179,10 @@ function makeEntity(
   y: number,
   name: string,
 ): Entity {
+  const speed =
+    kind === "protester" || kind === "police" || kind === "military"
+      ? roleSpeed(kind)
+      : 70 + random(w) * 20;
   return {
     hunger: 100,
     thirst: 100,
@@ -186,8 +195,7 @@ function makeEntity(
     x,
     y,
     dir: random(w) * Math.PI * 2,
-    speed:
-      kind === "military" ? 78 : kind === "police" ? 82 : 70 + random(w) * 20,
+    speed,
     hp: 100,
     maxHp: 100,
     state: "idle",
@@ -487,7 +495,6 @@ export function createWorld(
     const s = map.spawns[role];
     const p = makeEntity(w, role, role, s.x, s.y, playerName);
     p.isPlayer = true;
-    p.speed = 110;
     p.rank = rankFor(careerDetentions);
     p.sign = role === "protester";
     if (role === "protester") p.stones = 3;
@@ -1409,19 +1416,15 @@ export function doAction(
   targetId?: number,
 ) {
   const p = w.player;
-  if (
-    !p ||
-    p.remove ||
-    w.over ||
-    p.state === "down" ||
-    p.state === "detained" ||
-    p.stun > 0
-  )
-    return;
-  if (p.buildingId && action !== "primary") return;
+  if (!p || p.remove || w.over) return;
+  if (p.state === "down" || p.state === "detained")
+    return feed(w, "You cannot act while down or detained.", "info");
+  if (p.stun > 0) return feed(w, "You cannot act while stunned.", "info");
+  if (p.buildingId && action !== "primary")
+    return feed(w, "Leave the building before using that action.", "info");
   if (p.kind === "protester") {
     if (action === "primary") {
-      if (p.cooldown > 0) return;
+      if (p.cooldown > 0) return feed(w, "Chant on cooldown.", "info");
       p.cooldown = 2;
       // chant
       p.chantT = 4;
@@ -1436,7 +1439,8 @@ export function doAction(
       if (w.persistent) emitEvent(w, "chant", { actorId: p.id, amount: 1 });
       fx(w, "ring", p.x, p.y, 0.8, undefined, "#ffb14d");
     } else if (action === "special") {
-      if (p.cooldown > 0) return;
+      if (p.cooldown > 0) return feed(w, "Attack on cooldown.", "info");
+      if (!p.equipment) return feed(w, "No weapon equipped.", "info");
       if (p.equipment === "firearm") {
         if ((p.ammo ?? 0) <= 0)
           return feed(w, "No rounds. Collect an arms supply crate.", "info");
@@ -1542,7 +1546,7 @@ export function doAction(
         w.tension = clamp(w.tension + 1.5, 0, 100);
         w.morale = clamp(w.morale + 2, 0, 100);
         p.cooldown = 1.5;
-      }
+      } else feed(w, "Stone throw on cooldown.", "info");
     }
   } else if (p.kind === "police") {
     if (action === "primary") {
@@ -1587,20 +1591,18 @@ export function doAction(
         w.tension = clamp(w.tension + 1, 0, 100);
         fx(w, "ring", t.x, t.y, 0.3, undefined, "#8fb7ff");
         if (t.hp <= 0) downEntity(w, t);
-      }
-    } else if (action === "special") {
-      if (p.gas > 0 && p.cooldown <= 0 && p.target)
-        deployGas(w, p, p.target.x, p.target.y);
-      else
-        feed(
-          w,
-          p.gas > 0
-            ? "On cooldown."
-            : "No tear gas. Fund the police or grab a supply crate.",
-          "info",
-        );
+      } else feed(w, "No protester close enough to strike.", "info");
+    } else if (action === "secondary") feed(w, "Strike on cooldown.", "info");
+    else if (action === "special") {
+      if (p.cooldown > 0) return feed(w, "Tear gas on cooldown.", "info");
+      if (p.gas > 0 && p.target) deployGas(w, p, p.target.x, p.target.y);
+      else if (p.gas <= 0)
+        feed(w, "No tear gas. Fund the police or grab a supply crate.", "info");
+      else feed(w, "Aim at a nearby area before deploying tear gas.", "info");
     }
   } else if (p.kind === "military") {
+    if (action === "primary" && p.cooldown > 0)
+      return feed(w, "Fire on cooldown.", "info");
     if (action === "primary" && p.cooldown <= 0) {
       const t = nearest(w, p, (o) => roeValid(w, p, o), 240, targetId);
       if (!t) {
@@ -1616,7 +1618,9 @@ export function doAction(
         return;
       }
       fireBullet(w, p, t, true);
-    } else if (action === "secondary" && p.cooldown <= 0) {
+    } else if (action === "secondary" && p.cooldown > 0)
+      return feed(w, "Warning shot on cooldown.", "info");
+    else if (action === "secondary" && p.cooldown <= 0) {
       // warning shot
       fx(w, "flash", p.x, p.y - 22, 0.25);
       say(p, w.map.id === "delhi" ? "रुको! WARNING!" : "HALTE! WARNING!", 2);
@@ -1840,7 +1844,6 @@ export function spawnPlayer(
   player.remote = true;
   player.isPlayer = true;
   player.profileId = identity;
-  player.speed = 110;
   player.sign = role === "protester";
   if (role === "protester") player.stones = 3;
   w.entities.push(player);
@@ -1854,6 +1857,8 @@ export function updatePlayer(
   dt: number,
 ) {
   if (!Number.isFinite(dt) || dt <= 0 || !w.entities.includes(p)) return;
+  if (p.kind === "protester" || p.kind === "police" || p.kind === "military")
+    p.speed = roleSpeed(p.kind);
   dt = Math.min(dt, 0.05);
   const oldX = p.x,
     oldY = p.y;
@@ -1913,6 +1918,29 @@ export function updatePlayer(
 export function update(w: World, dt: number, input: InputState) {
   if (w.over || !Number.isFinite(dt) || dt <= 0) return;
   dt = Math.min(dt, 0.05);
+  if (!initializedCrowdAI.has(w)) {
+    const protesters = w.entities.filter(
+      (e) =>
+        e.kind === "protester" &&
+        !e.isPlayer &&
+        !e.remote &&
+        !e.remove &&
+        e.state !== "down" &&
+        e.state !== "detained",
+    );
+    if (protesters.length >= 12 || w.map.rallyPoints.length < 6) {
+      spreadLegacyCrowd(protesters, w.map.rallyPoints.length);
+      initializedCrowdAI.add(w);
+    }
+    for (const entity of w.entities)
+      if (
+        !entity.isPlayer &&
+        (entity.kind === "protester" ||
+          entity.kind === "police" ||
+          entity.kind === "military")
+      )
+        entity.speed = roleSpeed(entity.kind);
+  }
   w.time += dt;
   refillRoadsidePickups(w);
   w.tick++;

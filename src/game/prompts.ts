@@ -54,7 +54,7 @@ export function interactionPrompt(world: World | undefined, role: Role) {
         distance(player, item) <= 60,
     );
     if (crate) return "Walk over the crowd supply crate to collect gear";
-    return "E · Chant to raise morale and earn credits";
+    return `E · Chant to raise morale and earn credits · Q · Throw stone (${player.stones})${player.stones <= 0 ? " — no stones; collect a crate" : ""}`;
   }
 
   if (role === "police") {
@@ -82,7 +82,7 @@ export function interactionPrompt(world: World | undefined, role: Role) {
         distance(player, item) <= 60,
     );
     if (crate) return "Walk over the police supply crate to collect gear";
-    return "C · Place a formation order · E detains nearby suspects";
+    return "C · Place a formation order · E detains nearby suspects · Q baton needs a nearby protester · T gas";
   }
 
   return "Q · Warn first · E requires an immediate serious threat";

@@ -130,6 +130,7 @@ test("fixed-step movers clear a U obstruction and OSM rally routes without jitte
   };
   const uMover = {
     ...world.player!,
+    speed: 110,
     x: 230,
     y: 240,
     path: undefined,
@@ -141,6 +142,7 @@ test("fixed-step movers clear a U obstruction and OSM rally routes without jitte
     const seeded = createWorld(map.id, "protester", "Test", "test", 0, 0, 73);
     const mover = {
       ...seeded.player!,
+      speed: 110,
       x: map.rallyPoints[0].x,
       y: map.rallyPoints[0].y,
       path: undefined,

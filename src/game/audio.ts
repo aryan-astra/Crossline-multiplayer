@@ -3,7 +3,7 @@ import type { World, WorldEvent } from "./types";
 export type AudioSnapshot = Pick<
   World,
   "tick" | "events" | "entities" | "objective"
-> & { map: Pick<World["map"], "id"> };
+> & { map: Pick<World["map"], "id">; player?: World["player"] };
 
 export interface AudioListener {
   x: number;
@@ -57,6 +57,7 @@ export class DirectionalEventAudio {
   private disposed = false;
   private mapId: string | undefined;
   private tick = 0;
+  private playerHp: number | undefined;
 
   constructor(private readonly context: AudioContext) {}
 
@@ -85,6 +86,15 @@ export class DirectionalEventAudio {
       return;
     }
     this.tick = snapshot.tick;
+    const player = snapshot.player;
+    if (
+      player &&
+      this.playerHp !== undefined &&
+      player.hp < this.playerHp &&
+      volume > 0
+    )
+      this.playTone(spatialCue(player, listener, volume), 220);
+    this.playerHp = player?.hp;
     for (const event of events) {
       if (this.seen.has(event.id)) continue;
       this.seen.add(event.id);
@@ -124,6 +134,7 @@ export class DirectionalEventAudio {
     this.seen = new Set(snapshot.events.map((event) => event.id));
     this.mapId = snapshot.map.id;
     this.tick = snapshot.tick;
+    this.playerHp = snapshot.player?.hp;
     this.initialized = true;
   }
 
@@ -133,13 +144,17 @@ export class DirectionalEventAudio {
   }
 
   private play(event: WorldEvent, cue: SpatialCue): void {
+    this.playTone(cue, event.type === "death" ? 180 : 520);
+  }
+
+  private playTone(cue: SpatialCue, frequency: number): void {
     if (cue.gain <= 0) return;
     const now = this.context.currentTime;
     const oscillator = this.context.createOscillator();
     const gain = this.context.createGain();
     const pan = this.context.createStereoPanner();
     oscillator.type = "sine";
-    oscillator.frequency.value = event.type === "death" ? 180 : 520;
+    oscillator.frequency.value = frequency;
     pan.pan.value = cue.pan;
     gain.gain.setValueAtTime(cue.gain, now);
     gain.gain.exponentialRampToValueAtTime(

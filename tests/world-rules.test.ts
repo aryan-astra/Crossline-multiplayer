@@ -49,10 +49,10 @@ test("persistent world continues beyond300s and shared humans step exactly once"
   p.x = 500;
   p.y = 500;
   updatePlayer(w, p, { ...idle, right: true }, 0.05);
-  assert.equal(p.x, 505.5);
+  assert.equal(p.x, 500 + p.speed * 0.05);
   w.player = p;
   update(w, 0.05, { ...idle, right: true });
-  assert.equal(p.x, 505.5);
+  assert.equal(p.x, 500 + p.speed * 0.05);
   for (let i = 0; i < 6200; i++) update(w, 0.05, idle);
   assert.ok(w.time > 300);
   assert.equal(w.over, false);

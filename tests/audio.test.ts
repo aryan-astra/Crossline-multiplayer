@@ -166,3 +166,30 @@ test("dedupes within history, skips unknown sources, bounds history and disconne
     ramps.at(-1)! <= spatialCue({ x: 100, y: 0 }, { x: 0, y: 0 }, 0.00001).gain,
   );
 });
+
+test("plays a local hit cue when the player loses health", () => {
+  const { audio, oscillators } = fixture();
+  const player = {
+    id: 4,
+    x: 100,
+    y: 0,
+    hp: 100,
+    isPlayer: true,
+  } as AudioSnapshot["entities"][number];
+  audio.update(
+    snapshot([], { entities: [player], player }),
+    { x: 100, y: 0 },
+    1,
+  );
+  audio.update(
+    snapshot([], {
+      tick: 2,
+      entities: [{ ...player, hp: 76 }],
+      player: { ...player, hp: 76 },
+    }),
+    { x: 100, y: 0 },
+    1,
+  );
+  assert.equal(oscillators.length, 1);
+  assert.ok(oscillators[0].frequency.value < 520);
+});

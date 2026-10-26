@@ -60,8 +60,14 @@ test("bundled OSM footprints and navigation anchors stay on open ground", () => 
     assert.ok(
       map.policeLine.filter(
         (point) =>
-          Math.hypot(point.x - objective.x, point.y - objective.y) <= 60,
-      ).length >= 3,
+          Math.hypot(point.x - objective.x, point.y - objective.y) < 100,
+      ).length >= 6,
+    );
+    assert.ok(
+      map.policeLine.filter((point) => {
+        const radius = Math.hypot(point.x - objective.x, point.y - objective.y);
+        return radius >= 100 && radius <= 220;
+      }).length >= 8,
     );
     assert.ok(
       new Set(

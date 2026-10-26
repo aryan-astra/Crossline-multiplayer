@@ -42,10 +42,13 @@ test("fixed movement normalizes diagonals, follows camera and respects buildings
   };
   const straight = run({ ...idle, right: true });
   const diagonal = run({ ...idle, right: true, down: true });
-  assert.ok(Math.abs(straight.player!.x - 610) < 0.001);
+  assert.ok(
+    Math.abs(straight.player!.x - (500 + straight.player!.speed)) < 0.001,
+  );
   assert.ok(
     Math.abs(
-      Math.hypot(diagonal.player!.x - 500, diagonal.player!.y - 500) - 110,
+      Math.hypot(diagonal.player!.x - 500, diagonal.player!.y - 500) -
+        diagonal.player!.speed,
     ) < 0.001,
   );
   assert.ok(straight.camX > 500 && straight.camX < straight.player!.x);
@@ -154,6 +157,28 @@ test("chant cooldown and inactive players cannot farm actions", () => {
   w.player!.remove = true;
   doAction(w, "primary");
   assert.equal(w.earned, 2);
+});
+
+test("unavailable attacks explain cooldowns, empty stones and missing targets", () => {
+  const protester = world();
+  protester.player!.cooldown = 1;
+  doAction(protester, "secondary");
+  assert.match(protester.feed[0].text, /cooldown/i);
+  protester.player!.cooldown = 0;
+  protester.player!.stones = 0;
+  doAction(protester, "secondary");
+  assert.match(protester.player!.bubble!, /No stones/);
+  protester.player!.cooldown = 0;
+  doAction(protester, "special");
+  assert.match(protester.feed[0].text, /No weapon equipped/);
+
+  const police = createWorld("delhi", "police", "Officer", "police", 0, 0);
+  police.entities = [police.player!];
+  doAction(police, "secondary");
+  assert.match(police.feed[0].text, /No protester close enough/);
+  police.player!.cooldown = 1;
+  doAction(police, "secondary");
+  assert.match(police.feed[0].text, /cooldown/i);
 });
 
 test("player projectile travel time uses the aimed world distance", () => {

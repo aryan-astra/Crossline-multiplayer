@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWorld } from "../src/game/engine";
+import { createWorld, update } from "../src/game/engine";
 import { predictCharacter } from "../src/game/prediction";
 const input = {
   up: false,
@@ -29,4 +29,27 @@ test("visual prediction is bounded and cannot change authoritative health, ammo 
     predictCharacter(w.map, { ...player, state: "detained" }, input, 0.1).x,
     player.x,
   );
+});
+
+test("movement speed follows the player role for local and remote spawns", async () => {
+  const { spawnPlayer } = await import("../src/game/engine");
+  const speeds = (["protester", "police", "military"] as const).map((role) => {
+    const world = createWorld("paris", role, "Test", role, 0, 0);
+    const local = world.player!.speed;
+    const remote = spawnPlayer(world, role, "Remote", `remote-${role}`)!.speed;
+    return [local, remote];
+  });
+  for (const [local, remote] of speeds) assert.equal(local, remote);
+  assert.ok(speeds[0][0] > speeds[1][0]);
+  assert.ok(speeds[1][0] > speeds[2][0]);
+});
+
+test("existing player and bot speeds are normalized by role", () => {
+  const world = createWorld("paris", "protester", "Test", "test", 0, 0);
+  const bot = world.entities.find((entity) => entity.kind === "protester")!;
+  world.player!.speed = 110;
+  bot.speed = 110;
+  update(world, 0.01, { ...input, right: false });
+  assert.equal(world.player!.speed, 120);
+  assert.equal(bot.speed, 120);
 });

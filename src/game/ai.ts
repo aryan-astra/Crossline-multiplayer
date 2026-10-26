@@ -1,5 +1,22 @@
 type Position = { x: number; y: number };
 
+// Rebalance legacy crowds that only know the original rally anchors.
+export function spreadLegacyCrowd(
+  members: { id: number; rallyIdx: number; target: Position | null }[],
+  pointCount: number,
+): boolean {
+  if (pointCount < 6 || members.length < 12) return false;
+  const occupied = new Set(members.map((member) => member.rallyIdx));
+  if (occupied.size >= Math.min(6, pointCount)) return false;
+  [...members]
+    .sort((a, b) => a.id - b.id)
+    .forEach((member, index) => {
+      member.rallyIdx = index % pointCount;
+      member.target = null;
+    });
+  return true;
+}
+
 // Adapted from FLASHPOINT's centroid-relative squad line formation.
 export function formationSlot(
   order: Position,

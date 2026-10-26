@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { formationSlot, rallyTarget } from "../src/game/ai";
+import { formationSlot, rallyTarget, spreadLegacyCrowd } from "../src/game/ai";
 import { createWorld, doAction, spawnPlayer, update } from "../src/game/engine";
 import type { InputState } from "../src/game/types";
 
@@ -48,6 +48,110 @@ test("rally targets reproduce and stay inside the rally circle", () => {
     rallyTarget({ id: 1 }, rally, 80, 12),
     rallyTarget({ id: 1 }, rally, 80, 24),
   );
+});
+
+test("legacy clustered crowds get spread across city rally anchors once", () => {
+  const w = createWorld("delhi", "watcher", "Watcher", "watcher", 0, 0, 47);
+  const protesters = w.entities.filter((e) => e.kind === "protester");
+  for (const protester of protesters) {
+    protester.rallyIdx = 0;
+    protester.target = { x: 12, y: 34 };
+    protester.brain.discipline = 1;
+  }
+
+  assert.equal(spreadLegacyCrowd(protesters, w.map.rallyPoints.length), true);
+  assert.equal(
+    new Set(protesters.map((e) => e.rallyIdx)).size,
+    w.map.rallyPoints.length,
+  );
+  assert.ok(protesters.every((e) => e.target === null));
+  assert.equal(spreadLegacyCrowd(protesters, w.map.rallyPoints.length), false);
+
+  for (const protester of protesters) protester.rallyIdx = 0;
+  update(w, 0.05, idle);
+  assert.ok(new Set(protesters.map((e) => e.rallyIdx)).size >= 6);
+});
+
+test("crowds and police stay spread through both cities after a minute", async (t) => {
+  for (const mapId of ["delhi", "paris"] as const) {
+    await t.test(mapId, () => {
+      const w = createWorld(mapId, "watcher", "Watcher", "watcher", 0, 0, 53, {
+        persistent: true,
+      });
+      const protesters = w.entities.filter((e) => e.kind === "protester");
+      const startingPositions = new Map(
+        protesters.map((e) => [e.id, { x: e.x, y: e.y }]),
+      );
+      for (const protester of protesters) {
+        protester.rallyIdx = 0;
+        protester.brain.discipline = 1;
+        protester.target = null;
+      }
+
+      update(w, 0.05, idle);
+      assert.ok(
+        new Set(protesters.map((e) => e.rallyIdx)).size >= 6,
+        `${mapId}: migration did not assign citywide rally anchors`,
+      );
+      for (let i = 1; i < 1200; i++) update(w, 0.05, idle);
+
+      const activeProtesters = w.entities.filter(
+        (e) =>
+          e.kind === "protester" &&
+          !e.isPlayer &&
+          !e.remote &&
+          !e.remove &&
+          e.state !== "down" &&
+          e.state !== "detained",
+      );
+      const occupiedDistricts = new Set(
+        activeProtesters.map(
+          (e) =>
+            `${Math.floor((e.x / w.map.w) * 4)},${Math.floor((e.y / w.map.h) * 4)}`,
+        ),
+      );
+      assert.ok(
+        occupiedDistricts.size >= 6,
+        `${mapId}: occupied ${occupiedDistricts.size} districts`,
+      );
+
+      const moved = activeProtesters.filter((e) => {
+        const start = startingPositions.get(e.id);
+        return start && Math.hypot(e.x - start.x, e.y - start.y) > 20;
+      });
+      assert.ok(
+        moved.length >= Math.ceil(startingPositions.size * 0.75),
+        `${mapId}: only ${moved.length}/${startingPositions.size} original bots moved`,
+      );
+      assert.ok(
+        activeProtesters.every(
+          (e) =>
+            Number.isFinite(e.x) &&
+            Number.isFinite(e.y) &&
+            (!e.target ||
+              (Number.isFinite(e.target.x) && Number.isFinite(e.target.y))),
+        ),
+        `${mapId}: invalid bot position or target`,
+      );
+
+      const police = w.entities.filter((e) => e.kind === "police" && !e.remove);
+      const inner = police.filter(
+        (e) => Math.hypot(e.x - w.objective!.x, e.y - w.objective!.y) < 100,
+      );
+      const outer = police.filter((e) => {
+        const radius = Math.hypot(e.x - w.objective!.x, e.y - w.objective!.y);
+        return radius >= 100 && radius <= 220;
+      });
+      assert.ok(
+        inner.length >= 5,
+        `${mapId}: inner ring has ${inner.length} officers`,
+      );
+      assert.ok(
+        outer.length >= 7,
+        `${mapId}: outer ring has ${outer.length} officers`,
+      );
+    });
+  }
 });
 
 test("a protester does not chain stone throws during one violent episode", () => {
