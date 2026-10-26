@@ -511,6 +511,9 @@ progress::-moz-progress-bar {
   display: none;
 }
 .game-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
   position: absolute;
   z-index: 3;
   top: 104px;
@@ -522,6 +525,12 @@ progress::-moz-progress-bar {
   color: var(--cream);
   border-radius: var(--radius);
   font-size: var(--type-small);
+}
+.game-toast button {
+  flex-shrink: 0;
+  margin-left: auto;
+  min-width: 44px;
+  padding: var(--space-xs);
 }
 .game-modal {
   position: absolute;
@@ -895,18 +904,23 @@ progress::-moz-progress-bar {
   }
 }
 @media (pointer: coarse) {
+  .floating-minimap {
+    width: clamp(112px, 30vw, 144px);
+    left: max(var(--space-s), env(safe-area-inset-left));
+    bottom: calc(144px + env(safe-area-inset-bottom));
+  }
   .touch-pad {
     display: flex;
     position: fixed;
-    bottom: var(--space-l);
-    left: var(--space-m);
+    bottom: max(var(--space-l), env(safe-area-inset-bottom));
+    left: max(var(--space-m), env(safe-area-inset-left));
     align-items: end;
     pointer-events: auto;
   }
   .game-bottom .action-buttons {
     position: fixed;
-    bottom: var(--space-xl);
-    right: var(--space-m);
+    bottom: max(var(--space-l), env(safe-area-inset-bottom));
+    right: max(var(--space-m), env(safe-area-inset-right));
     max-width: min(224px, calc(100% - 160px));
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -918,14 +932,25 @@ progress::-moz-progress-bar {
   }
   .game-bottom p {
     position: fixed;
-    bottom: 160px;
+    bottom: auto;
+    top: calc(96px + env(safe-area-inset-top));
     left: var(--space-m);
     right: var(--space-m);
     max-width: none;
     text-align: center;
   }
   .game-shell:is([data-role="police"], [data-role="military"]) .game-bottom p {
-    bottom: 264px;
+    bottom: auto;
+  }
+}
+@media (pointer: coarse) and (max-height: 500px) {
+  .floating-minimap {
+    width: 112px;
+  }
+  .game-bottom p {
+    left: 160px;
+    right: 160px;
+    top: 72px;
   }
 }
 @media (max-height: 500px) {

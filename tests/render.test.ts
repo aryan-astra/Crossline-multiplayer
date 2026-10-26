@@ -98,11 +98,13 @@ test("roofs occlude characters behind the facade and culling skips distant actor
   assert.ok(
     labels.indexOf("▼ Behind") < labels.indexOf(placeName("TEST BLOCK")),
   );
-  assert.ok(labels.indexOf(placeName("TEST BLOCK")) < labels.indexOf("Front"));
+  assert.ok(
+    labels.indexOf(placeName("TEST BLOCK")) < labels.indexOf("◉ Front"),
+  );
   assert.ok(!labels.includes("▼ Distant"));
 });
 
-test("only the local human gets a gold name; remote names appear on selection", () => {
+test("visible local, remote and bot names appear without selecting anyone", () => {
   const w = createWorld("paris", "protester", "Local", "test", 500, 0);
   const local = w.player!;
   local.x = w.camX;
@@ -115,7 +117,16 @@ test("only the local human gets a gold name; remote names appear on selection", 
     name: "Remote",
     x: local.x + 30,
   };
-  w.entities = [local, remote];
+  const bot = {
+    ...local,
+    id: w.nextId++,
+    profileId: undefined,
+    isPlayer: false,
+    remote: false,
+    name: "Aarav",
+    x: local.x - 40,
+  };
+  w.entities = [local, remote, bot];
   w.map.buildings = [];
   w.map.trees = [];
   w.objective = undefined;
@@ -123,11 +134,39 @@ test("only the local human gets a gold name; remote names appear on selection", 
   const labels: string[] = [];
   drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
   assert.ok(labels.includes("▼ Local"));
-  assert.ok(!labels.includes("◉ Remote"));
+  assert.ok(labels.includes("◉ Remote"));
+  assert.ok(labels.includes("Aarav · BOT"));
   w.selectedId = remote.id;
   labels.length = 0;
   drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
   assert.ok(labels.includes("◉ Remote"));
+});
+
+test("roadside gear is labeled and highlights its walk-over pickup when close", () => {
+  const w = createWorld("delhi", "protester", "Collector", "test", 500, 0);
+  const player = w.player!;
+  const stone = {
+    ...player,
+    id: w.nextId++,
+    kind: "crate" as const,
+    isPlayer: false,
+    crateItem: "stones" as const,
+    crateFaction: "protester" as const,
+    roadsidePickup: true,
+    x: player.x + 100,
+  };
+  w.entities = [player, stone];
+  w.map.buildings = [];
+  w.map.trees = [];
+  w.objective = undefined;
+  w.resources = [];
+  const labels: string[] = [];
+  drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
+  assert.ok(labels.includes("STONES"));
+  stone.x = player.x + 30;
+  labels.length = 0;
+  drawFrame(recordingContext(labels), w, 400, 300, {} as HTMLCanvasElement);
+  assert.ok(labels.includes("Walk over · STONES"));
 });
 
 test("entrances keep a quiet door glyph and show ENTER only nearby", () => {

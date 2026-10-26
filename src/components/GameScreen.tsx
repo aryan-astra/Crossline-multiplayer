@@ -76,7 +76,7 @@ export default function GameScreen({
   const qualityRef = useRef(1);
   const audio = useRef<AudioContext | null>(null);
   const sound = useRef<DirectionalEventAudio | null>(null);
-  const volumeRef = useRef(0);
+  const volumeRef = useRef(0.35);
   const sendRef = useRef<(command: Command) => boolean>(() => false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState("Connecting");
@@ -87,7 +87,7 @@ export default function GameScreen({
   const [command, setCommand] = useState(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [quality, setQuality] = useState(1);
-  const [volume, setVolume] = useState(0);
+  const [volume, setVolume] = useState(0.35);
   const [frameMs, setFrameMs] = useState(0);
   const [hudTab, setHudTab] = useState<"overview" | "people" | "news">(
     "overview",
@@ -129,7 +129,7 @@ export default function GameScreen({
   const action = (kind: Extract<Command, { type: "action" }>["action"]) =>
     actionRef.current(kind);
 
-  const setSoundVolume = (value: number) => {
+  const setSoundVolume = useCallback((value: number) => {
     volumeRef.current = value;
     setVolume(value);
     if (value <= 0) return;
@@ -148,7 +148,14 @@ export default function GameScreen({
     } catch {
       setNotice("Audio is unavailable in this browser.");
     }
-  };
+  }, []);
+  const unlockAudio = useCallback(() => {
+    if (
+      volumeRef.current > 0 &&
+      (!sound.current || audio.current?.state === "suspended")
+    )
+      setSoundVolume(volumeRef.current);
+  }, [setSoundVolume]);
 
   useEffect(() => {
     if (panel) modal.current?.showModal();
@@ -414,6 +421,7 @@ export default function GameScreen({
       sendRef.current({ type: "input", input: emptyInput() });
     };
     const down = (event: KeyboardEvent) => {
+      unlockAudio();
       if (
         paused.current ||
         (event.target instanceof Element &&
@@ -441,12 +449,11 @@ export default function GameScreen({
       }
       if (key === "q") actionRef.current("secondary");
       if (key === "t") actionRef.current("special");
-      if (key === "f") sendRef.current({ type: "action", action: "interact" });
+      if (key === "f") actionRef.current("interact");
       if (key === "b")
-        sendRef.current({
-          type: "action",
-          action: latest.current?.world.player?.buildingId ? "exit" : "enter",
-        });
+        actionRef.current(
+          latest.current?.world.player?.buildingId ? "exit" : "enter",
+        );
       if (
         key === "c" &&
         ["police", "military"].includes(latest.current?.self.role ?? "")
@@ -481,7 +488,7 @@ export default function GameScreen({
       document.removeEventListener("visibilitychange", clear);
       view.removeEventListener("wheel", wheel);
     };
-  }, [areaId]);
+  }, [areaId, unlockAudio]);
 
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef({
@@ -531,7 +538,11 @@ export default function GameScreen({
   };
 
   return (
-    <main className="game-shell" data-role={actualRole}>
+    <main
+      className="game-shell"
+      data-role={actualRole}
+      onPointerDownCapture={unlockAudio}
+    >
       <canvas
         ref={canvas}
         aria-label="Public city. Move with WASD or arrows. Select agents from the inspector for keyboard access."
@@ -569,6 +580,13 @@ export default function GameScreen({
             x: event.clientX,
             y: event.clientY,
           });
+          if (
+            Math.hypot(
+              event.clientX - gesture.current.x,
+              event.clientY - gesture.current.y,
+            ) > 6
+          )
+            gesture.current.moved = true;
           if (actualRole !== "watcher") return;
           follow.current = false;
           setFollowing(false);
@@ -592,7 +610,7 @@ export default function GameScreen({
           }
         }}
         onPointerUp={(event) => {
-          pointers.current.delete(event.pointerId);
+          if (!pointers.current.delete(event.pointerId)) return;
           const remaining = [...pointers.current.values()][0];
           if (remaining) {
             Object.assign(gesture.current, {
@@ -614,25 +632,27 @@ export default function GameScreen({
             commandRef.current = false;
             setCommand(false);
           } else {
-            setHudTab("people");
-            setHudCollapsed(false);
-            select(
-              world.entities
-                .filter(
-                  (e) =>
-                    !e.remove &&
-                    e.kind !== "truck" &&
-                    e.kind !== "crate" &&
-                    e.buildingId === world.player?.buildingId,
-                )
-                .sort(
-                  (a, b) =>
-                    Math.hypot(a.x - point.x, a.y - point.y) -
-                    Math.hypot(b.x - point.x, b.y - point.y),
-                )
-                .find((e) => Math.hypot(e.x - point.x, e.y - point.y) < 22)
-                ?.id ?? null,
-            );
+            let closest = 22 / camera.current.zoom;
+            let picked: number | null = null;
+            for (const e of world.entities) {
+              if (
+                e.remove ||
+                e.kind === "truck" ||
+                e.kind === "crate" ||
+                e.buildingId !== world.player?.buildingId
+              )
+                continue;
+              const distance = Math.hypot(e.x - point.x, e.y - point.y);
+              if (distance < closest) {
+                closest = distance;
+                picked = e.id;
+              }
+            }
+            if (picked !== null) {
+              select(picked);
+              setHudTab("people");
+              setHudCollapsed(false);
+            }
           }
         }}
         onPointerCancel={(event) => {
@@ -698,7 +718,7 @@ export default function GameScreen({
         <canvas
           ref={minimap}
           width="240"
-          height="164"
+          height={w ? Math.round((240 * w.map.h) / w.map.w) : 164}
           aria-label="Minimap. Gold is you; the book marks the objective."
         />
         <span>{w ? CITY_NAMES[w.map.id] : "Connecting"}</span>
@@ -750,7 +770,12 @@ export default function GameScreen({
       )}
       {!marketOpen && (notice || status !== "Connected") && (
         <div className="game-toast" role="status">
-          {notice || status}
+          <span>{notice || status}</span>
+          {notice && (
+            <button aria-label="Dismiss message" onClick={() => setNotice("")}>
+              ×
+            </button>
+          )}
         </div>
       )}
       <aside

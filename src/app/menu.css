@@ -248,7 +248,7 @@
   display: flex;
   list-style: none;
   margin: 0;
-  padding: var(--space-m) var(--space-l) 0;
+  padding: 16px 24px 0;
   gap: var(--space-xs);
 }
 .setup-progress li {
@@ -263,7 +263,7 @@
   border-color: var(--accent);
 }
 .setup-content {
-  padding: var(--space-m) var(--space-l);
+  padding: 16px 24px;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -279,7 +279,7 @@
 .setup-description {
   color: var(--ink-2);
   font-size: var(--type-small);
-  margin: 0 0 var(--space-m);
+  margin: 0 0 8px;
   line-height: 1.5;
 }
 .setup-content fieldset {
@@ -325,6 +325,9 @@
   color: var(--accent);
   margin: var(--space-s) 0 0;
 }
+.setup-error:empty {
+  display: none;
+}
 .setup-options {
   display: grid;
   gap: var(--space-xs);
@@ -334,7 +337,7 @@
   display: flex;
   gap: var(--space-s);
   align-items: center;
-  padding: var(--space-s);
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #10121455;
@@ -391,33 +394,40 @@
 .role-options {
   grid-template-columns: 1fr 1fr;
 }
+.area-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: var(--space-s);
+}
+.area-options .setup-choice strong,
+.role-options .setup-choice strong {
+  font-size: 20px;
+  line-height: 1.1;
+}
+.role-options .setup-choice > span:last-child {
+  min-width: 0;
+}
 .role-options .setup-choice {
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-xs);
-  padding: var(--space-s);
+  padding: 8px;
 }
-.setup-review {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-  font-size: var(--type-small);
-  color: var(--ink-2);
-  margin-top: var(--space-m);
-  padding-top: var(--space-s);
-  border-top: 1px solid var(--line);
+.role-portrait {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 48px;
+  overflow: hidden;
+  border-radius: var(--radius);
 }
-.setup-review button {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--ink-2);
-  text-decoration: underline;
+.role-portrait img {
+  object-fit: cover;
+  object-position: center 20%;
 }
 .setup-bottom {
   display: flex;
   justify-content: space-between;
   gap: var(--space-s);
-  padding: var(--space-s) var(--space-l) var(--space-m);
+  padding: 8px 24px 16px;
   margin-top: auto;
 }
 .setup-bottom .lobby-primary {
@@ -563,9 +573,6 @@
   }
   .setup-choice {
     padding: var(--space-xs) var(--space-s);
-  }
-  .setup-review {
-    margin-top: var(--space-s);
   }
 }
 @media (prefers-reduced-motion: reduce) {

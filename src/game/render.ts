@@ -772,6 +772,7 @@ function drawPerson(
       e.deathUntil && e.profileId ? "RESPAWNING" : "DOWN",
       "#e0d4c5",
     );
+    drawNameTag(g, w, e);
     return;
   }
   const detained = e.state === "detained";
@@ -979,18 +980,14 @@ function drawPerson(
     g.beginPath();
     g.arc(e.x, e.y, 15, 0, Math.PI * 2);
     g.stroke();
-    label(g, e.x, e.y + 26, `▼ ${e.name}`, "#ffd75e");
   } else if (e.remote || e.profileId) {
     g.strokeStyle = "rgba(91,211,195,0.72)";
     g.lineWidth = 1.25;
     g.beginPath();
     g.arc(e.x, e.y, 12, 0, Math.PI * 2);
     g.stroke();
-    if (w.selectedId === e.id)
-      label(g, e.x, e.y + 26, `◉ ${e.name}`, "#8ce1d5");
-  } else if (w.selectedId === e.id) {
-    label(g, e.x, e.y + 26, e.name, "#fff");
   }
+  drawNameTag(g, w, e);
   if (w.selectedId === e.id) {
     g.strokeStyle = "#fff";
     g.lineWidth = 1.5;
@@ -1006,7 +1003,7 @@ function drawPerson(
     g.arc(e.x, e.y - 17, 4, 0, Math.PI * 2);
     g.fill();
     if (w.selectedId === e.id)
-      label(g, e.x, e.y - 28, "WANTED " + e.wanted, "#ff8875");
+      label(g, e.x, e.y - 45 / w.zoom, "WANTED " + e.wanted, "#ff8875");
   }
   // rank pips for police
   if ((e.kind === "police" || e.kind === "military") && e.rank > 0) {
@@ -1022,7 +1019,7 @@ function drawPerson(
     g.font = "600 11px 'Barlow', sans-serif";
     const tw = g.measureText(e.bubble).width;
     const bx = e.x - tw / 2 - 7,
-      by = e.y - 46;
+      by = e.y - 80 / w.zoom;
     g.fillStyle = "rgba(20,22,26,0.88)";
     g.beginPath();
     g.roundRect(bx, by, tw + 14, 20, 6);
@@ -1037,6 +1034,22 @@ function drawPerson(
     g.textAlign = "center";
     g.fillText(e.bubble, e.x, by + 14);
   }
+}
+
+function drawNameTag(g: CanvasRenderingContext2D, w: World, e: Entity) {
+  const local = w.player?.id === e.id;
+  const human = e.isPlayer || e.remote || !!e.profileId;
+  g.save();
+  g.translate(e.x, e.y);
+  g.scale(1 / w.zoom, 1 / w.zoom);
+  label(
+    g,
+    0,
+    -28,
+    local ? `▼ ${e.name}` : human ? `◉ ${e.name}` : `${e.name} · BOT`,
+    local ? "#ffd75e" : human ? "#8ce1d5" : "#cbd4d6",
+  );
+  g.restore();
 }
 
 function label(
@@ -1095,17 +1108,30 @@ function drawTruck(g: CanvasRenderingContext2D, e: Entity, time: number) {
   g.restore();
 }
 
-function drawCrate(g: CanvasRenderingContext2D, e: Entity, time: number) {
+function drawCrate(
+  g: CanvasRenderingContext2D,
+  e: Entity,
+  time: number,
+  player: Entity | null,
+) {
   if (
     e.roadsidePickup &&
     (e.crateItem === "stones" ||
       e.crateItem === "stick" ||
       e.crateItem === "bat")
   ) {
-    g.fillStyle = "rgba(245,226,157,0.12)";
+    const nearby =
+      !!player &&
+      !player.buildingId &&
+      player.faction === e.crateFaction &&
+      Math.hypot(player.x - e.x, player.y - e.y) <= 60;
+    g.fillStyle = nearby ? "rgba(245,226,157,0.3)" : "rgba(245,226,157,0.15)";
     g.beginPath();
-    g.arc(e.x, e.y, 14, 0, Math.PI * 2);
+    g.arc(e.x, e.y, nearby ? 22 : 17, 0, Math.PI * 2);
     g.fill();
+    g.strokeStyle = nearby ? "#ffe598" : "#c9b66e";
+    g.lineWidth = nearby ? 2 : 1;
+    g.stroke();
     if (e.crateItem === "stones") {
       g.fillStyle = "#d7ddd4";
       for (const [x, y, r] of [
@@ -1125,6 +1151,13 @@ function drawCrate(g: CanvasRenderingContext2D, e: Entity, time: number) {
       g.lineTo(e.x + 6, e.y - 7);
       g.stroke();
     }
+    label(
+      g,
+      e.x,
+      e.y - 28,
+      `${nearby ? "Walk over · " : ""}${e.crateItem === "stones" ? "STONES" : e.crateItem === "bat" ? "BAT" : "STICK"}`,
+      "#ffe598",
+    );
     return;
   }
   const glow = 0.5 + Math.sin(time * 4 + e.id) * 0.3;
@@ -1352,7 +1385,7 @@ export function drawFrame(
       continue;
     }
     const e = item.entity!;
-    if (e.kind === "crate") drawCrate(ctx, e, time);
+    if (e.kind === "crate") drawCrate(ctx, e, time, w.player);
     else if (e.kind === "truck") drawTruck(ctx, e, time);
     else {
       const showSpeech =

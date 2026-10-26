@@ -166,7 +166,6 @@ export default function Home() {
   };
   const city = cities.find((item) => item.id === mapId)!;
   const selectedRole = roles.find((item) => item.id === role)!;
-  const selectedArea = AREAS[mapId].find((item) => item.id === areaId)!;
   const panelOpen = step >= 0 || guide;
 
   if (playing)
@@ -401,7 +400,7 @@ export default function Home() {
               {step === 1 && (
                 <fieldset>
                   <legend>Entry area</legend>
-                  <div className="setup-options">
+                  <div className="setup-options area-options">
                     {AREAS[mapId].map((item) => (
                       <label className="setup-choice" key={item.id}>
                         <input
@@ -434,6 +433,7 @@ export default function Home() {
                           <input
                             type="radio"
                             name="role"
+                            aria-label={`${item.name}. ${item.control}`}
                             value={item.id}
                             checked={role === item.id}
                             disabled={
@@ -442,14 +442,20 @@ export default function Home() {
                             }
                             onChange={() => setRole(item.id)}
                           />
+                          <span className="role-portrait">
+                            <Image
+                              src={`/img/crossline-${item.id}.png`}
+                              alt=""
+                              fill
+                              sizes="44px"
+                            />
+                          </span>
                           <span>
                             <strong>{item.name}</strong>
-                            <small>
-                              {item.id === "military" &&
-                              !profile?.appointmentUntil
-                                ? "Earn a police appointment"
-                                : item.control}
-                            </small>
+                            {item.id === "military" &&
+                              !profile?.appointmentUntil && (
+                                <small>Locked</small>
+                              )}
                           </span>
                         </label>
                       ))}
@@ -457,25 +463,6 @@ export default function Home() {
                   </fieldset>
                   <p className="setup-note">{selectedRole.description}</p>
                 </>
-              )}
-              {step > 0 && (
-                <div className="setup-review">
-                  <button type="button" onClick={() => setStep(0)}>
-                    {name}
-                  </button>
-                  <span>/</span>
-                  <button type="button" onClick={() => setStep(0)}>
-                    {city.name}
-                  </button>
-                  {step >= 1 && (
-                    <>
-                      <span>/</span>
-                      <button type="button" onClick={() => setStep(1)}>
-                        {placeName(selectedArea.name)}
-                      </button>
-                    </>
-                  )}
-                </div>
               )}
               <p className="setup-error" id="setup-error" role="status">
                 {error}
